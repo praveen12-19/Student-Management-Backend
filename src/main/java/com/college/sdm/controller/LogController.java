@@ -1,6 +1,5 @@
 package com.college.sdm.controller;
 
-import com.college.sdm.entity.SystemLog;
 import com.college.sdm.repository.SystemLogRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;

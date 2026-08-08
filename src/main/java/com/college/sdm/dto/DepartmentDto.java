@@ -12,4 +12,6 @@ public class DepartmentDto {
 
     @NotBlank(message = "Department name is required")
     private String name;
+
+    private java.util.List<String> sections;
 }

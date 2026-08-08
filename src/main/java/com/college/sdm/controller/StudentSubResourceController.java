@@ -355,6 +355,21 @@ public class StudentSubResourceController {
         return ResponseEntity.ok(list);
     }
 
+    @PostMapping("/certificates")
+    public ResponseEntity<CertificateDto> addCertificate(
+            @PathVariable Long studentId,
+            @Valid @RequestBody CertificateDto dto,
+            Principal principal) {
+        Student student = getVerifiedStudent(studentId, principal);
+        Certificate cert = Certificate.builder()
+                .student(student)
+                .type(dto.getType())
+                .filePath(dto.getFilePath())
+                .build();
+        cert = certificateRepository.save(cert);
+        return ResponseEntity.ok(mapCertificateToDto(cert));
+    }
+
     @PutMapping("/certificates/{certId}")
     public ResponseEntity<CertificateDto> updateCertificate(
             @PathVariable Long studentId,

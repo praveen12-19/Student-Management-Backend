@@ -13,8 +13,13 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
     Optional<Student> findByRegisterNumber(String registerNumber);
     
     List<Student> findByDepartmentIn(List<Department> departments);
-    
+
+    List<Student> findByDepartment(Department department);
+
     List<Student> findByMentor(Mentor mentor);
+
+    @Query("SELECT s FROM Student s WHERE s.department = :department AND s.year = :year AND s.mentor IS NULL")
+    List<Student> findUnassignedStudents(@Param("department") Department department, @Param("year") Integer year);
 
     @Query("SELECT s FROM Student s WHERE s.department IN :departments AND " +
            "(LOWER(s.name) LIKE LOWER(CONCAT('%', :query, '%')) OR " +

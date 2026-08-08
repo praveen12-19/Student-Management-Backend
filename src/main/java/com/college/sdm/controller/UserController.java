@@ -82,6 +82,7 @@ public class UserController {
     }
 
     @PostMapping("/hods")
+    @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public ResponseEntity<HodResponse> createHod(@RequestBody HodRequest request, Principal principal) {
         if (userRepository.existsByUsername(request.username)) {
@@ -119,27 +120,11 @@ public class UserController {
     }
 
     @PutMapping("/hods/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Transactional
-    public ResponseEntity<HodResponse> updateHod(@PathVariable String id, @RequestBody HodRequest request, Principal principal) {
-        Long numericId = 1L;
-        try {
-            numericId = Long.parseLong(id.replaceAll("\\D+", ""));
-        } catch (Exception ignored) {}
-
-        final Long targetId = numericId;
-        User user = userRepository.findById(targetId)
-                .orElseGet(() -> userRepository.findAll().stream()
-                        .filter(u -> u.getRole() == Role.ROLE_HOD || u.getUsername().equalsIgnoreCase(request.username))
-                        .findFirst()
-                        .orElseGet(() -> {
-                            User newHod = User.builder()
-                                    .username(request.username)
-                                    .name(request.name)
-                                    .password(passwordEncoder.encode(request.password != null && !request.password.trim().isEmpty() ? request.password : "password123"))
-                                    .role(Role.ROLE_HOD)
-                                    .build();
-                            return userRepository.save(newHod);
-                        }));
+    public ResponseEntity<HodResponse> updateHod(@PathVariable Long id, @RequestBody HodRequest request, Principal principal) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("HOD not found: " + id));
 
         user.setUsername(request.username);
         user.setName(request.name);
@@ -150,6 +135,7 @@ public class UserController {
 
         // Update department assignments
         hodDepartmentAssignmentRepository.deleteByHodId(user.getId());
+        hodDepartmentAssignmentRepository.flush();
         if (request.departmentIds != null) {
             for (Long deptId : request.departmentIds) {
                 Department dept = departmentRepository.findById(deptId).orElse(null);
@@ -174,6 +160,7 @@ public class UserController {
     }
 
     @DeleteMapping("/hods/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     public ResponseEntity<Void> deleteHod(@PathVariable Long id, Principal principal) {
         User user = userRepository.findById(id)

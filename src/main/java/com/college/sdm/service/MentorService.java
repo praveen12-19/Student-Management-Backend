@@ -62,6 +62,7 @@ public class MentorService {
         }
 
         Department department = getOrDefaultDepartment(request.getDepartmentId());
+        validateDepartmentSection(department, request.getAssignedSection());
 
         User user = User.builder()
                 .username(request.getUsername())
@@ -82,39 +83,45 @@ public class MentorService {
         return mapToResponseDto(mentor);
     }
 
-    @Transactional
-    public MentorResponseDto updateMentor(Long id, MentorRequestDto request) {
-        Mentor mentor = mentorRepository.findById(id).orElse(null);
+    public Mentor findMentorEntityByIdOrUsername(String idOrUsername) {
+        if (idOrUsername == null || idOrUsername.trim().isEmpty()) return null;
 
-        if (mentor == null) {
-            User user = userRepository.findByUsername(request.getUsername()).orElse(null);
-            if (user == null) {
-                user = User.builder()
-                        .username(request.getUsername())
-                        .password(passwordEncoder.encode(request.getPassword() != null && !request.getPassword().isEmpty() ? request.getPassword() : "mentor123"))
-                        .name(request.getName())
-                        .role(Role.ROLE_MENTOR)
-                        .build();
-                user = userRepository.save(user);
-            } else {
-                user.setName(request.getName());
-                if (request.getPassword() != null && !request.getPassword().trim().isEmpty()) {
-                    user.setPassword(passwordEncoder.encode(request.getPassword()));
-                }
-                userRepository.save(user);
-            }
+        String clean = idOrUsername.trim();
 
-            Department department = getOrDefaultDepartment(request.getDepartmentId());
-
-            mentor = Mentor.builder()
-                    .user(user)
-                    .department(department)
-                    .assignedYear(request.getAssignedYear())
-                    .assignedSection(request.getAssignedSection())
-                    .build();
-            mentor = mentorRepository.save(mentor);
-            return mapToResponseDto(mentor);
+        // 1. Check exact username lookup first
+        User user = userRepository.findByUsername(clean).orElse(null);
+        if (user != null) {
+            Mentor mentor = mentorRepository.findByUser(user).orElse(null);
+            if (mentor != null) return mentor;
         }
+
+        // 2. Check exact numeric ID lookup if clean string is purely digits
+        if (clean.matches("\\d+")) {
+            try {
+                Long numericId = Long.parseLong(clean);
+                Mentor mentor = mentorRepository.findById(numericId).orElse(null);
+                if (mentor != null) return mentor;
+            } catch (Exception ignored) {}
+        }
+
+        // 3. Fallback scan across all mentors by username, ID, or name
+        return mentorRepository.findAll().stream()
+                .filter(m -> m.getUser().getUsername().equalsIgnoreCase(clean)
+                          || String.valueOf(m.getId()).equals(clean)
+                          || m.getUser().getName().equalsIgnoreCase(clean))
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Transactional
+    public MentorResponseDto updateMentor(String idOrUsername, MentorRequestDto request) {
+        Mentor mentor = findMentorEntityByIdOrUsername(idOrUsername);
+        if (mentor == null) {
+            throw new ResourceNotFoundException("Mentor not found: " + idOrUsername);
+        }
+
+        Department department = getOrDefaultDepartment(request.getDepartmentId());
+        validateDepartmentSection(department, request.getAssignedSection());
 
         User user = mentor.getUser();
         user.setUsername(request.getUsername());
@@ -124,8 +131,6 @@ public class MentorService {
         }
         userRepository.save(user);
 
-        Department department = getOrDefaultDepartment(request.getDepartmentId());
-
         mentor.setDepartment(department);
         mentor.setAssignedYear(request.getAssignedYear());
         mentor.setAssignedSection(request.getAssignedSection());
@@ -134,24 +139,48 @@ public class MentorService {
         return mapToResponseDto(mentor);
     }
 
+    @Transactional
+    public MentorResponseDto updateMentor(Long id, MentorRequestDto request) {
+        return updateMentor(String.valueOf(id), request);
+    }
+
     private Department getOrDefaultDepartment(Long departmentId) {
-        if (departmentId != null) {
+        if (departmentId != null && departmentId > 0) {
             Department dept = departmentRepository.findById(departmentId).orElse(null);
             if (dept != null) {
                 return dept;
             }
         }
-        return departmentRepository.findAll().stream().findFirst()
-                .orElseGet(() -> departmentRepository.save(Department.builder().name("Computer Science & Engineering").build()));
+        List<Department> all = departmentRepository.findAll();
+        if (!all.isEmpty()) {
+            return all.get(0);
+        }
+        throw new ResourceNotFoundException("Department not found with id: " + departmentId);
+    }
+
+    private void validateDepartmentSection(Department department, String section) {
+        if (department != null && department.getSections() != null && !department.getSections().isEmpty() && section != null && !section.trim().isEmpty()) {
+            boolean valid = department.getSections().stream()
+                    .anyMatch(s -> s.equalsIgnoreCase(section.trim()))
+                    || section.equalsIgnoreCase("A")
+                    || section.equalsIgnoreCase("B");
+            if (!valid) {
+                throw new IllegalArgumentException("Section '" + section + "' does not belong to department '" + department.getName() + "'");
+            }
+        }
     }
 
     @Transactional
-    public MentorResponseDto assignClassToMentor(Long id, Long departmentId, Integer year, String section) {
-        Mentor mentor = mentorRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Mentor not found with id: " + id));
+    public MentorResponseDto assignClassToMentor(String idOrUsername, Long departmentId, Integer year, String section) {
+        Mentor mentor = findMentorEntityByIdOrUsername(idOrUsername);
+        if (mentor == null) {
+            throw new ResourceNotFoundException("Mentor not found: " + idOrUsername);
+        }
 
         Department department = departmentRepository.findById(departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found: " + departmentId));
+
+        validateDepartmentSection(department, section);
 
         mentor.setDepartment(department);
         mentor.setAssignedYear(year);
@@ -161,26 +190,14 @@ public class MentorService {
         return mapToResponseDto(mentor);
     }
 
+    @Transactional
+    public MentorResponseDto assignClassToMentor(Long id, Long departmentId, Integer year, String section) {
+        return assignClassToMentor(String.valueOf(id), departmentId, year, section);
+    }
+
     public MentorResponseDto findMentorByIdOrUsername(String idOrUsername) {
-        if (idOrUsername == null || idOrUsername.trim().isEmpty()) return null;
-
-        try {
-            Long numericId = Long.parseLong(idOrUsername.replaceAll("\\D+", ""));
-            Mentor mentor = mentorRepository.findById(numericId).orElse(null);
-            if (mentor != null) return mapToResponseDto(mentor);
-        } catch (Exception ignored) {}
-
-        User user = userRepository.findByUsername(idOrUsername).orElse(null);
-        if (user != null) {
-            Mentor mentor = mentorRepository.findByUser(user).orElse(null);
-            if (mentor != null) return mapToResponseDto(mentor);
-        }
-
-        return mentorRepository.findAll().stream()
-                .filter(m -> m.getUser().getUsername().equalsIgnoreCase(idOrUsername) || String.valueOf(m.getId()).equals(idOrUsername))
-                .findFirst()
-                .map(this::mapToResponseDto)
-                .orElse(null);
+        Mentor mentor = findMentorEntityByIdOrUsername(idOrUsername);
+        return mentor != null ? mapToResponseDto(mentor) : null;
     }
 
     @Autowired
@@ -213,6 +230,7 @@ public class MentorService {
                 .department(DepartmentDto.builder()
                         .id(mentor.getDepartment().getId())
                         .name(mentor.getDepartment().getName())
+                        .sections(mentor.getDepartment().getSections() != null ? mentor.getDepartment().getSections() : java.util.Collections.emptyList())
                         .build())
                 .assignedYear(mentor.getAssignedYear())
                 .assignedSection(mentor.getAssignedSection())

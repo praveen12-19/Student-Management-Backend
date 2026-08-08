@@ -44,6 +44,7 @@ public class DepartmentService {
     public DepartmentDto createDepartment(DepartmentDto departmentDto, String currentUsername) {
         Department dept = Department.builder()
                 .name(departmentDto.getName())
+                .sections(departmentDto.getSections() != null ? departmentDto.getSections() : new java.util.ArrayList<>())
                 .build();
         dept = departmentRepository.save(dept);
 
@@ -66,6 +67,9 @@ public class DepartmentService {
         Department dept = departmentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found with id: " + id));
         dept.setName(departmentDto.getName());
+        if (departmentDto.getSections() != null) {
+            dept.setSections(departmentDto.getSections());
+        }
         dept = departmentRepository.save(dept);
         return mapToDto(dept);
     }
@@ -84,6 +88,7 @@ public class DepartmentService {
         return DepartmentDto.builder()
                 .id(department.getId())
                 .name(department.getName())
+                .sections(department.getSections() != null ? department.getSections() : java.util.Collections.emptyList())
                 .build();
     }
 }

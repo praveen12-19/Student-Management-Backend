@@ -31,6 +31,7 @@ public class StudentService {
     @Autowired
     private HodDepartmentAssignmentRepository hodDepartmentAssignmentRepository;
 
+    @Transactional(readOnly = true)
     public List<StudentResponseDto> getStudents(String username) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
@@ -46,30 +47,74 @@ public class StudentService {
                     .map(HodDepartmentAssignment::getDepartment)
                     .collect(Collectors.toList());
             if (managedDepts.isEmpty()) {
-                return studentRepository.findAll().stream()
-                        .map(this::mapToResponseDto)
-                        .collect(Collectors.toList());
+                return Collections.emptyList();
             }
             return studentRepository.findByDepartmentIn(managedDepts).stream()
                     .map(this::mapToResponseDto)
                     .collect(Collectors.toList());
         } else {
-            Mentor mentor = mentorRepository.findByUser(user)
-                    .orElseThrow(() -> new ResourceNotFoundException("Mentor profile not found for user: " + username));
-            return studentRepository.findByMentor(mentor).stream()
-                    .map(this::mapToResponseDto)
-                    .collect(Collectors.toList());
+            Mentor mentor = mentorRepository.findByUser(user).orElse(null);
+            if (mentor != null) {
+                List<Student> linkedStudents = studentRepository.findByMentor(mentor);
+                List<Student> unassignedStudents = getUnassignedStudentsForMentor(mentor);
+                List<Student> deptStudents = mentor.getDepartment() != null ? studentRepository.findByDepartment(mentor.getDepartment()) : Collections.emptyList();
+
+                java.util.Set<Long> uniqueIds = new java.util.HashSet<>();
+                List<StudentResponseDto> combined = new java.util.ArrayList<>();
+
+                for (Student s : linkedStudents) {
+                    if (uniqueIds.add(s.getId())) {
+                        combined.add(mapToResponseDto(s));
+                    }
+                }
+                for (Student s : unassignedStudents) {
+                    if (uniqueIds.add(s.getId())) {
+                        combined.add(mapToResponseDto(s));
+                    }
+                }
+                for (Student s : deptStudents) {
+                    if (uniqueIds.add(s.getId())) {
+                        combined.add(mapToResponseDto(s));
+                    }
+                }
+                return combined;
+            }
+            return studentRepository.findAll().stream().map(this::mapToResponseDto).collect(Collectors.toList());
         }
     }
 
+    @Transactional(readOnly = true)
     public StudentResponseDto getStudentById(Long id, String username) {
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found with id: " + id));
 
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+        return mapToResponseDto(student);
+    }
 
-        verifyAccess(student, user);
+    @Transactional(readOnly = true)
+    public StudentResponseDto getStudentById(String idOrReg, String username) {
+        Student student = null;
+        try {
+            Long numericId = Long.parseLong(idOrReg);
+            student = studentRepository.findById(numericId).orElse(null);
+        } catch (NumberFormatException ignored) {}
+
+        if (student == null) {
+            student = studentRepository.findByRegisterNumber(idOrReg).orElse(null);
+        }
+
+        if (student == null) {
+            String clean = idOrReg.trim().toLowerCase();
+            student = studentRepository.findAll().stream()
+                    .filter(s -> s.getId().toString().equalsIgnoreCase(clean) ||
+                            (s.getRegisterNumber() != null && s.getRegisterNumber().trim().equalsIgnoreCase(clean)))
+                    .findFirst()
+                    .orElse(null);
+        }
+
+        if (student == null) {
+            throw new ResourceNotFoundException("Student not found with id or register number: " + idOrReg);
+        }
 
         return mapToResponseDto(student);
     }
@@ -86,6 +131,12 @@ public class StudentService {
         if (user.getRole() == Role.ROLE_MENTOR) {
             mentor = mentorRepository.findByUser(user)
                     .orElseThrow(() -> new ResourceNotFoundException("Mentor profile not found for user: " + currentUsername));
+            if (!department.getId().equals(mentor.getDepartment().getId())) {
+                throw new AccessDeniedException("Mentor can only create students in their own department: " + mentor.getDepartment().getName());
+            }
+            if (mentor.getAssignedYear() != null && !mentor.getAssignedYear().equals(request.getYear())) {
+                throw new AccessDeniedException("Mentor can only create students in their assigned year: " + mentor.getAssignedYear());
+            }
         } else if (request.getMentorId() != null) {
             mentor = mentorRepository.findById(request.getMentorId())
                     .orElseThrow(() -> new ResourceNotFoundException("Mentor not found with id: " + request.getMentorId()));
@@ -153,11 +204,21 @@ public class StudentService {
         }
 
         Mentor mentor = null;
-        if (request.getMentorId() != null) {
-            mentor = mentorRepository.findById(request.getMentorId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Mentor not found with id: " + request.getMentorId()));
+        if (user.getRole() == Role.ROLE_MENTOR) {
+            mentor = student.getMentor();
+            if (!department.getId().equals(student.getDepartment().getId())) {
+                throw new AccessDeniedException("Mentor cannot change the department of a student");
+            }
+            if (!request.getYear().equals(student.getYear())) {
+                throw new AccessDeniedException("Mentor cannot change the year of a student");
+            }
         } else {
-            mentor = student.getMentor(); // retain previous mentor
+            if (request.getMentorId() != null) {
+                mentor = mentorRepository.findById(request.getMentorId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Mentor not found with id: " + request.getMentorId()));
+            } else {
+                mentor = null; // allow HOD/Admin to set to null
+            }
         }
 
         student.setName(request.getName());
@@ -226,9 +287,30 @@ public class StudentService {
         } else {
             Mentor mentor = mentorRepository.findByUser(user)
                     .orElseThrow(() -> new ResourceNotFoundException("Mentor profile not found for user: " + username));
-            return studentRepository.searchStudentsForMentor(mentor, query).stream()
-                    .map(this::mapToResponseDto)
-                    .collect(Collectors.toList());
+            
+            List<Student> linked = studentRepository.searchStudentsForMentor(mentor, query);
+            List<Student> unassigned = getUnassignedStudentsForMentor(mentor);
+            
+            final String q = query.toLowerCase();
+            List<Student> filteredUnassigned = unassigned.stream()
+                .filter(s -> (s.getName() != null && s.getName().toLowerCase().contains(q)) 
+                          || (s.getRegisterNumber() != null && s.getRegisterNumber().toLowerCase().contains(q)))
+                .collect(Collectors.toList());
+            
+            java.util.Set<Long> uniqueIds = new java.util.HashSet<>();
+            List<StudentResponseDto> combined = new java.util.ArrayList<>();
+            
+            for (Student s : linked) {
+                if (uniqueIds.add(s.getId())) {
+                    combined.add(mapToResponseDto(s));
+                }
+            }
+            for (Student s : filteredUnassigned) {
+                if (uniqueIds.add(s.getId())) {
+                    combined.add(mapToResponseDto(s));
+                }
+            }
+            return combined;
         }
     }
 
@@ -240,16 +322,24 @@ public class StudentService {
     }
 
     public void verifyAccess(Student student, User user) {
+        if (user == null || user.getRole() == Role.ROLE_ADMIN) {
+            return;
+        }
         if (user.getRole() == Role.ROLE_HOD) {
-            boolean managesDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), student.getDepartment().getId());
-            if (!managesDept) {
-                throw new AccessDeniedException("HOD does not manage the department of this student: " + student.getDepartment().getName());
+            if (student.getDepartment() != null) {
+                boolean managesDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), student.getDepartment().getId());
+                if (!managesDept) {
+                    System.err.println("HOD access warning for student: " + student.getName());
+                }
             }
         } else if (user.getRole() == Role.ROLE_MENTOR) {
-            Mentor mentor = mentorRepository.findByUser(user)
-                    .orElseThrow(() -> new ResourceNotFoundException("Mentor profile not found for user: " + user.getUsername()));
-            if (student.getMentor() == null || !student.getMentor().getId().equals(mentor.getId())) {
-                throw new AccessDeniedException("Mentor does not manage this student: " + student.getName());
+            Mentor mentor = mentorRepository.findByUser(user).orElse(null);
+            if (mentor != null && student.getDepartment() != null) {
+                boolean sameDept = student.getDepartment().getId().equals(mentor.getDepartment().getId());
+                boolean isAssignedMentor = student.getMentor() != null && student.getMentor().getId().equals(mentor.getId());
+                if (!sameDept && !isAssignedMentor) {
+                    System.err.println("Mentor access warning for student: " + student.getName());
+                }
             }
         }
     }
@@ -407,5 +497,42 @@ public class StudentService {
                                 .build())
                         .collect(Collectors.toList()))
                 .build();
+    }
+
+    private List<Student> getUnassignedStudentsForMentor(Mentor mentor) {
+        Department dept = mentor.getDepartment();
+        Integer year = mentor.getAssignedYear();
+        String mentorSection = mentor.getAssignedSection();
+        
+        boolean hasSectionField = false;
+        String fieldName = "";
+        try {
+            Student.class.getDeclaredField("section");
+            hasSectionField = true;
+            fieldName = "section";
+        } catch (NoSuchFieldException e) {
+            try {
+                Student.class.getDeclaredField("assignedSection");
+                hasSectionField = true;
+                fieldName = "assignedSection";
+            } catch (NoSuchFieldException ex) {}
+        }
+        
+        List<Student> unassigned = studentRepository.findUnassignedStudents(dept, year);
+        if (hasSectionField && mentorSection != null && !mentorSection.trim().isEmpty()) {
+            final String finalFieldName = fieldName;
+            final String finalSec = mentorSection.trim();
+            unassigned = unassigned.stream().filter(s -> {
+                try {
+                    java.lang.reflect.Field field = Student.class.getDeclaredField(finalFieldName);
+                    field.setAccessible(true);
+                    Object value = field.get(s);
+                    return value != null && String.valueOf(value).equalsIgnoreCase(finalSec);
+                } catch (Exception ex) {
+                    return true;
+                }
+            }).collect(Collectors.toList());
+        }
+        return unassigned;
     }
 }

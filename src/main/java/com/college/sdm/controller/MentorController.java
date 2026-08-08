@@ -56,7 +56,7 @@ public class MentorController {
                 .collect(Collectors.toList());
 
         if (managedDepts.isEmpty()) {
-            return ResponseEntity.ok(mentorService.getAllMentors());
+            return ResponseEntity.ok(new ArrayList<>());
         }
 
         List<MentorResponseDto> mentors = new ArrayList<>();
@@ -67,17 +67,13 @@ public class MentorController {
         return ResponseEntity.ok(mentors);
     }
 
-    private void ensureHodDepartmentAssignment(User user, Long departmentId) {
-        if (user.getRole() == Role.ROLE_HOD && departmentId != null) {
-            Department dept = departmentRepository.findById(departmentId).orElse(null);
-            if (dept != null && !hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), dept.getId())) {
-                HodDepartmentAssignment assignment = HodDepartmentAssignment.builder()
-                        .hod(user)
-                        .department(dept)
-                        .build();
-                hodDepartmentAssignmentRepository.save(assignment);
-            }
+    private boolean hasDepartmentAccess(User user, Long departmentId) {
+        if (user.getRole() == Role.ROLE_ADMIN) return true;
+        if (user.getRole() == Role.ROLE_HOD) {
+            if (departmentId == null) return false;
+            return hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), departmentId);
         }
+        return false;
     }
 
     @PostMapping
@@ -85,61 +81,63 @@ public class MentorController {
         User user = userRepository.findByUsername(principal.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
 
-        boolean manages = user.getRole() == Role.ROLE_ADMIN || user.getRole() == Role.ROLE_HOD || hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), request.getDepartmentId());
-        if (!manages) {
+        if (!hasDepartmentAccess(user, request.getDepartmentId())) {
             return ResponseEntity.status(403).build();
         }
 
         MentorResponseDto created = mentorService.createMentor(request);
-        ensureHodDepartmentAssignment(user, created.getDepartment() != null ? created.getDepartment().getId() : request.getDepartmentId());
         systemLogService.log(principal.getName(), "Create Mentor", "Added mentor profile: " + created.getName() + " (@" + created.getUsername() + ")");
         return ResponseEntity.ok(created);
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<MentorResponseDto> updateMentor(
-            @PathVariable Long id,
+            @PathVariable String id,
             @Valid @RequestBody MentorRequestDto request,
             Principal principal) {
 
         User user = userRepository.findByUsername(principal.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
 
-        MentorResponseDto mentor = mentorService.getMentorById(id);
-        boolean manages = user.getRole() == Role.ROLE_ADMIN || user.getRole() == Role.ROLE_HOD || hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), mentor.getDepartment().getId());
-        if (!manages) {
+        MentorResponseDto mentor = mentorService.findMentorByIdOrUsername(id);
+        if (mentor == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        if (!hasDepartmentAccess(user, mentor.getDepartment() != null ? mentor.getDepartment().getId() : null)
+                || !hasDepartmentAccess(user, request.getDepartmentId())) {
             return ResponseEntity.status(403).build();
         }
 
         MentorResponseDto updated = mentorService.updateMentor(id, request);
-        ensureHodDepartmentAssignment(user, updated.getDepartment() != null ? updated.getDepartment().getId() : request.getDepartmentId());
         systemLogService.log(principal.getName(), "Update Mentor", "Updated details for mentor: " + updated.getName() + " (@" + updated.getUsername() + ")");
         return ResponseEntity.ok(updated);
     }
 
     @PutMapping("/{id}/assign-class")
     public ResponseEntity<MentorResponseDto> assignClass(
-            @PathVariable Long id,
+            @PathVariable String id,
             @RequestBody Map<String, Object> body,
             Principal principal) {
 
         User user = userRepository.findByUsername(principal.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
 
+        MentorResponseDto mentor = mentorService.findMentorByIdOrUsername(id);
+        if (mentor == null) {
+            return ResponseEntity.notFound().build();
+        }
+
         Long departmentId = ((Number) body.get("departmentId")).longValue();
         Integer year = ((Number) body.get("assignedYear")).intValue();
         String section = (String) body.get("assignedSection");
 
-        MentorResponseDto mentor = mentorService.getMentorById(id);
-        boolean managesCurrent = user.getRole() == Role.ROLE_ADMIN || user.getRole() == Role.ROLE_HOD || hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), mentor.getDepartment().getId());
-        boolean managesTarget = user.getRole() == Role.ROLE_ADMIN || user.getRole() == Role.ROLE_HOD || hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), departmentId);
-
-        if (!managesCurrent || !managesTarget) {
+        if (!hasDepartmentAccess(user, mentor.getDepartment() != null ? mentor.getDepartment().getId() : null)
+                || !hasDepartmentAccess(user, departmentId)) {
             return ResponseEntity.status(403).build();
         }
 
         MentorResponseDto updated = mentorService.assignClassToMentor(id, departmentId, year, section);
-        ensureHodDepartmentAssignment(user, updated.getDepartment() != null ? updated.getDepartment().getId() : departmentId);
         systemLogService.log(principal.getName(), "Assign Class", "Assigned class to mentor " + updated.getName() + ": Year " + updated.getAssignedYear() + " Section " + updated.getAssignedSection());
         return ResponseEntity.ok(updated);
     }
@@ -154,8 +152,7 @@ public class MentorController {
             return ResponseEntity.noContent().build();
         }
 
-        boolean manages = user.getRole() == Role.ROLE_ADMIN || user.getRole() == Role.ROLE_HOD || hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), mentor.getDepartment().getId());
-        if (!manages) {
+        if (!hasDepartmentAccess(user, mentor.getDepartment() != null ? mentor.getDepartment().getId() : null)) {
             return ResponseEntity.status(403).build();
         }
 

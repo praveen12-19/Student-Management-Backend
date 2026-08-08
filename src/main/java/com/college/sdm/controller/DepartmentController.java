@@ -1,9 +1,7 @@
 package com.college.sdm.controller;
 
 import com.college.sdm.dto.DepartmentDto;
-import com.college.sdm.entity.HodDepartmentAssignment;
-import com.college.sdm.entity.Role;
-import com.college.sdm.entity.User;
+import com.college.sdm.entity.*;
 import com.college.sdm.exception.ResourceNotFoundException;
 import com.college.sdm.repository.HodDepartmentAssignmentRepository;
 import com.college.sdm.repository.UserRepository;
@@ -37,6 +35,16 @@ public class DepartmentController {
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'MENTOR')")
     public ResponseEntity<List<DepartmentDto>> getDepartments(Principal principal) {
+        User user = userRepository.findByUsername(principal.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
+
+        if (user.getRole() == Role.ROLE_HOD) {
+            List<Department> managedDepts = hodDepartmentAssignmentRepository.findByHod(user).stream()
+                    .map(HodDepartmentAssignment::getDepartment)
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(managedDepts.stream().map(departmentService::mapToDto).collect(Collectors.toList()));
+        }
+
         return ResponseEntity.ok(departmentService.getAllDepartments());
     }
 
@@ -55,6 +63,7 @@ public class DepartmentController {
     }
 
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DepartmentDto> createDepartment(@Valid @RequestBody DepartmentDto departmentDto, Principal principal) {
         DepartmentDto created = departmentService.createDepartment(departmentDto, principal.getName());
         systemLogService.log(principal.getName(), "Create Department", "Added new department: " + created.getName());
@@ -62,12 +71,12 @@ public class DepartmentController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD')")
     public ResponseEntity<DepartmentDto> updateDepartment(@PathVariable Long id, @Valid @RequestBody DepartmentDto departmentDto, Principal principal) {
         User user = userRepository.findByUsername(principal.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
 
-        boolean manages = user.getRole() == Role.ROLE_ADMIN || hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), id);
-        if (!manages) {
+        if (user.getRole() != Role.ROLE_ADMIN && user.getRole() != Role.ROLE_HOD) {
             return ResponseEntity.status(403).build();
         }
 
@@ -77,12 +86,12 @@ public class DepartmentController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> deleteDepartment(@PathVariable Long id, Principal principal) {
         User user = userRepository.findByUsername(principal.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
 
-        boolean manages = user.getRole() == Role.ROLE_ADMIN || hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), id);
-        if (!manages) {
+        if (user.getRole() != Role.ROLE_ADMIN) {
             return ResponseEntity.status(403).build();
         }
 
