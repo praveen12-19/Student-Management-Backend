@@ -6,16 +6,19 @@ import com.college.sdm.dto.MentorResponseDto;
 import com.college.sdm.entity.Department;
 import com.college.sdm.entity.Mentor;
 import com.college.sdm.entity.Role;
+import com.college.sdm.entity.Student;
 import com.college.sdm.entity.User;
 import com.college.sdm.exception.ResourceNotFoundException;
 import com.college.sdm.repository.DepartmentRepository;
 import com.college.sdm.repository.MentorRepository;
+import com.college.sdm.repository.StudentRepository;
 import com.college.sdm.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,6 +33,9 @@ public class MentorService {
 
     @Autowired
     private DepartmentRepository departmentRepository;
+
+    @Autowired
+    private StudentRepository studentRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -200,16 +206,13 @@ public class MentorService {
         return mentor != null ? mapToResponseDto(mentor) : null;
     }
 
-    @Autowired
-    private com.college.sdm.repository.StudentRepository studentRepository;
-
     @Transactional
     public void deleteMentor(Long id) {
         Mentor mentor = mentorRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Mentor not found with id: " + id));
 
-        List<com.college.sdm.entity.Student> assignedStudents = studentRepository.findByMentor(mentor);
-        for (com.college.sdm.entity.Student s : assignedStudents) {
+        List<Student> assignedStudents = studentRepository.findByMentor(mentor);
+        for (Student s : assignedStudents) {
             s.setMentor(null);
             studentRepository.save(s);
         }
@@ -230,10 +233,11 @@ public class MentorService {
                 .department(DepartmentDto.builder()
                         .id(mentor.getDepartment().getId())
                         .name(mentor.getDepartment().getName())
-                        .sections(mentor.getDepartment().getSections() != null ? mentor.getDepartment().getSections() : java.util.Collections.emptyList())
+                        .sections(mentor.getDepartment().getSections() != null ? mentor.getDepartment().getSections() : Collections.emptyList())
                         .build())
                 .assignedYear(mentor.getAssignedYear())
                 .assignedSection(mentor.getAssignedSection())
                 .build();
     }
 }
+

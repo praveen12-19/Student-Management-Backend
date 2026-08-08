@@ -57,7 +57,9 @@ public class StudentService {
             if (mentor != null) {
                 List<Student> linkedStudents = studentRepository.findByMentor(mentor);
                 List<Student> unassignedStudents = getUnassignedStudentsForMentor(mentor);
-                List<Student> deptStudents = mentor.getDepartment() != null ? studentRepository.findByDepartment(mentor.getDepartment()) : Collections.emptyList();
+                List<Student> deptStudents = mentor.getDepartment() != null
+                        ? studentRepository.findByDepartment(mentor.getDepartment())
+                        : Collections.emptyList();
 
                 java.util.Set<Long> uniqueIds = new java.util.HashSet<>();
                 List<StudentResponseDto> combined = new java.util.ArrayList<>();
@@ -88,6 +90,10 @@ public class StudentService {
         Student student = studentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Student not found with id: " + id));
 
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+        verifyAccess(student, user);
+
         return mapToResponseDto(student);
     }
 
@@ -97,7 +103,8 @@ public class StudentService {
         try {
             Long numericId = Long.parseLong(idOrReg);
             student = studentRepository.findById(numericId).orElse(null);
-        } catch (NumberFormatException ignored) {}
+        } catch (NumberFormatException ignored) {
+        }
 
         if (student == null) {
             student = studentRepository.findByRegisterNumber(idOrReg).orElse(null);
@@ -116,6 +123,10 @@ public class StudentService {
             throw new ResourceNotFoundException("Student not found with id or register number: " + idOrReg);
         }
 
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+        verifyAccess(student, user);
+
         return mapToResponseDto(student);
     }
 
@@ -130,21 +141,26 @@ public class StudentService {
         Mentor mentor = null;
         if (user.getRole() == Role.ROLE_MENTOR) {
             mentor = mentorRepository.findByUser(user)
-                    .orElseThrow(() -> new ResourceNotFoundException("Mentor profile not found for user: " + currentUsername));
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Mentor profile not found for user: " + currentUsername));
             if (!department.getId().equals(mentor.getDepartment().getId())) {
-                throw new AccessDeniedException("Mentor can only create students in their own department: " + mentor.getDepartment().getName());
+                throw new AccessDeniedException(
+                        "Mentor can only create students in their own department: " + mentor.getDepartment().getName());
             }
             if (mentor.getAssignedYear() != null && !mentor.getAssignedYear().equals(request.getYear())) {
-                throw new AccessDeniedException("Mentor can only create students in their assigned year: " + mentor.getAssignedYear());
+                throw new AccessDeniedException(
+                        "Mentor can only create students in their assigned year: " + mentor.getAssignedYear());
             }
         } else if (request.getMentorId() != null) {
             mentor = mentorRepository.findById(request.getMentorId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Mentor not found with id: " + request.getMentorId()));
+                    .orElseThrow(
+                            () -> new ResourceNotFoundException("Mentor not found with id: " + request.getMentorId()));
         }
 
         // Verify HOD has permission to create student in this department
         if (user.getRole() == Role.ROLE_HOD) {
-            boolean managesDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), department.getId());
+            boolean managesDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(),
+                    department.getId());
             if (!managesDept) {
                 throw new AccessDeniedException("HOD does not manage this department: " + department.getName());
             }
@@ -197,7 +213,8 @@ public class StudentService {
 
         // If HOD updates department, verify HOD has access to new department as well
         if (user.getRole() == Role.ROLE_HOD) {
-            boolean managesNewDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), department.getId());
+            boolean managesNewDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(),
+                    department.getId());
             if (!managesNewDept) {
                 throw new AccessDeniedException("HOD does not manage the target department: " + department.getName());
             }
@@ -215,7 +232,8 @@ public class StudentService {
         } else {
             if (request.getMentorId() != null) {
                 mentor = mentorRepository.findById(request.getMentorId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Mentor not found with id: " + request.getMentorId()));
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Mentor not found with id: " + request.getMentorId()));
             } else {
                 mentor = null; // allow HOD/Admin to set to null
             }
@@ -252,16 +270,33 @@ public class StudentService {
     }
 
     @Transactional
-    public void deleteStudent(Long id, String currentUsername) {
-        Student student = studentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Student not found with id: " + id));
+    public void deleteStudent(String idOrReg, String currentUsername) {
+        Student student = null;
+        try {
+            Long numericId = Long.parseLong(idOrReg);
+            student = studentRepository.findById(numericId).orElse(null);
+        } catch (NumberFormatException ignored) {
+        }
 
-        User user = userRepository.findByUsername(currentUsername)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + currentUsername));
+        if (student == null) {
+            student = studentRepository.findByRegisterNumber(idOrReg).orElse(null);
+        }
 
-        verifyAccess(student, user);
+        if (student == null) {
+            String clean = idOrReg.trim().toLowerCase();
+            student = studentRepository.findAll().stream()
+                    .filter(s -> s.getId().toString().equalsIgnoreCase(clean) ||
+                            (s.getRegisterNumber() != null && s.getRegisterNumber().trim().equalsIgnoreCase(clean)))
+                    .findFirst()
+                    .orElse(null);
+        }
 
-        studentRepository.delete(student);
+        if (student != null) {
+            User user = userRepository.findByUsername(currentUsername)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found: " + currentUsername));
+            verifyAccess(student, user);
+            studentRepository.delete(student);
+        }
     }
 
     public List<StudentResponseDto> searchStudents(String query, String username) {
@@ -287,19 +322,19 @@ public class StudentService {
         } else {
             Mentor mentor = mentorRepository.findByUser(user)
                     .orElseThrow(() -> new ResourceNotFoundException("Mentor profile not found for user: " + username));
-            
+
             List<Student> linked = studentRepository.searchStudentsForMentor(mentor, query);
             List<Student> unassigned = getUnassignedStudentsForMentor(mentor);
-            
+
             final String q = query.toLowerCase();
             List<Student> filteredUnassigned = unassigned.stream()
-                .filter(s -> (s.getName() != null && s.getName().toLowerCase().contains(q)) 
-                          || (s.getRegisterNumber() != null && s.getRegisterNumber().toLowerCase().contains(q)))
-                .collect(Collectors.toList());
-            
+                    .filter(s -> (s.getName() != null && s.getName().toLowerCase().contains(q))
+                            || (s.getRegisterNumber() != null && s.getRegisterNumber().toLowerCase().contains(q)))
+                    .collect(Collectors.toList());
+
             java.util.Set<Long> uniqueIds = new java.util.HashSet<>();
             List<StudentResponseDto> combined = new java.util.ArrayList<>();
-            
+
             for (Student s : linked) {
                 if (uniqueIds.add(s.getId())) {
                     combined.add(mapToResponseDto(s));
@@ -315,10 +350,36 @@ public class StudentService {
     }
 
     public void verifyAccess(Student student) {
-        String username = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .getAuthentication().getName();
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
         verifyAccess(student, user);
+    }
+
+    private boolean yearsMatch(Object y1, Object y2) {
+        if (y1 == null || y2 == null)
+            return true;
+        String s1 = String.valueOf(y1).trim().toUpperCase();
+        String s2 = String.valueOf(y2).trim().toUpperCase();
+        if (s1.equals(s2))
+            return true;
+        return normalizeYear(s1).equals(normalizeYear(s2));
+    }
+
+    private String normalizeYear(String y) {
+        if (y == null)
+            return "";
+        String s = y.trim().toUpperCase();
+        if (s.equals("I") || s.equals("1") || s.equals("1ST") || s.equals("FIRST"))
+            return "1";
+        if (s.equals("II") || s.equals("2") || s.equals("2ND") || s.equals("SECOND"))
+            return "2";
+        if (s.equals("III") || s.equals("3") || s.equals("3RD") || s.equals("THIRD"))
+            return "3";
+        if (s.equals("IV") || s.equals("4") || s.equals("4TH") || s.equals("FOURTH"))
+            return "4";
+        return s;
     }
 
     public void verifyAccess(Student student, User user) {
@@ -327,19 +388,38 @@ public class StudentService {
         }
         if (user.getRole() == Role.ROLE_HOD) {
             if (student.getDepartment() != null) {
-                boolean managesDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), student.getDepartment().getId());
+                boolean managesDept = false;
+                if (user.getDepartment() != null && user.getDepartment().getId().equals(student.getDepartment().getId())) {
+                    managesDept = true;
+                }
                 if (!managesDept) {
-                    System.err.println("HOD access warning for student: " + student.getName());
+                    managesDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(),
+                            student.getDepartment().getId());
+                }
+                if (!managesDept) {
+                    int count = hodDepartmentAssignmentRepository.findByHodId(user.getId()).size();
+                    if (count > 0) {
+                        throw new AccessDeniedException("HOD does not have access to students in department: "
+                                + student.getDepartment().getName());
+                    }
                 }
             }
         } else if (user.getRole() == Role.ROLE_MENTOR) {
             Mentor mentor = mentorRepository.findByUser(user).orElse(null);
-            if (mentor != null && student.getDepartment() != null) {
-                boolean sameDept = student.getDepartment().getId().equals(mentor.getDepartment().getId());
-                boolean isAssignedMentor = student.getMentor() != null && student.getMentor().getId().equals(mentor.getId());
-                if (!sameDept && !isAssignedMentor) {
-                    System.err.println("Mentor access warning for student: " + student.getName());
-                }
+            Department mentorDept = (mentor != null && mentor.getDepartment() != null) ? mentor.getDepartment() : user.getDepartment();
+
+            boolean sameDept = mentorDept != null && student.getDepartment() != null &&
+                    (mentorDept.getId().equals(student.getDepartment().getId()) ||
+                            (mentorDept.getName() != null && student.getDepartment().getName() != null &&
+                                    mentorDept.getName().equalsIgnoreCase(student.getDepartment().getName())));
+            boolean isAssignedMentor = mentor != null && student.getMentor() != null
+                    && student.getMentor().getId().equals(mentor.getId());
+            boolean isUnassignedInScope = student.getMentor() == null
+                    && yearsMatch((mentor != null ? mentor.getAssignedYear() : user.getAssignedYear()), student.getYear());
+
+            if (!sameDept && !isAssignedMentor && !isUnassignedInScope) {
+                throw new AccessDeniedException(
+                        "Mentor does not have access to students outside their department or scope");
             }
         }
     }
@@ -357,7 +437,8 @@ public class StudentService {
     }
 
     public StudentResponseDto mapToResponseDto(Student s) {
-        if (s == null) return null;
+        if (s == null)
+            return null;
 
         MentorResponseDto mentorDto = null;
         if (s.getMentor() != null) {
@@ -403,99 +484,109 @@ public class StudentService {
                 .totalLeavesTaken(s.getTotalLeavesTaken())
                 .od(s.getOd())
                 .lateComing(s.getLateComing())
-                .tenthDetail(s.getTenthDetail() == null ? null : TenthDetailDto.builder()
-                        .id(s.getTenthDetail().getId())
-                        .schoolName(s.getTenthDetail().getSchoolName())
-                        .medium(s.getTenthDetail().getMedium())
-                        .totalMarks(s.getTenthDetail().getTotalMarks())
-                        .percentage(s.getTenthDetail().getPercentage())
-                        .yearOfPassing(s.getTenthDetail().getYearOfPassing())
-                        .build())
-                .twelfthDetail(s.getTwelfthDetail() == null ? null : TwelfthDetailDto.builder()
-                        .id(s.getTwelfthDetail().getId())
-                        .schoolName(s.getTwelfthDetail().getSchoolName())
-                        .medium(s.getTwelfthDetail().getMedium())
-                        .group(s.getTwelfthDetail().getGroup())
-                        .totalMarks(s.getTwelfthDetail().getTotalMarks())
-                        .percentage(s.getTwelfthDetail().getPercentage())
-                        .cutoff(s.getTwelfthDetail().getCutoff())
-                        .physicsMarks(s.getTwelfthDetail().getPhysicsMarks())
-                        .chemistryMarks(s.getTwelfthDetail().getChemistryMarks())
-                        .mathsMarks(s.getTwelfthDetail().getMathsMarks())
-                        .yearOfPassing(s.getTwelfthDetail().getYearOfPassing())
-                        .build())
-                .admissionDetail(s.getAdmissionDetail() == null ? null : AdmissionDetailDto.builder()
-                        .id(s.getAdmissionDetail().getId())
-                        .scholarships(s.getAdmissionDetail().getScholarships())
-                        .build())
-                .siblings(s.getSiblings() == null ? Collections.emptyList() : s.getSiblings().stream()
-                        .map(sib -> SiblingDto.builder()
-                                .id(sib.getId())
-                                .name(sib.getName())
-                                .occupation(sib.getOccupation())
-                                .qualification(sib.getQualification())
-                                .emailId(sib.getEmailId())
-                                .mobileNumber(sib.getMobileNumber())
+                .tenthDetail(s.getTenthDetail() == null ? null
+                        : TenthDetailDto.builder()
+                                .id(s.getTenthDetail().getId())
+                                .schoolName(s.getTenthDetail().getSchoolName())
+                                .medium(s.getTenthDetail().getMedium())
+                                .totalMarks(s.getTenthDetail().getTotalMarks())
+                                .percentage(s.getTenthDetail().getPercentage())
+                                .yearOfPassing(s.getTenthDetail().getYearOfPassing())
                                 .build())
-                        .collect(Collectors.toList()))
-                .certificates(s.getCertificates() == null ? Collections.emptyList() : s.getCertificates().stream()
-                        .map(cert -> CertificateDto.builder()
-                                .id(cert.getId())
-                                .type(cert.getType())
-                                .filePath(cert.getFilePath())
+                .twelfthDetail(s.getTwelfthDetail() == null ? null
+                        : TwelfthDetailDto.builder()
+                                .id(s.getTwelfthDetail().getId())
+                                .schoolName(s.getTwelfthDetail().getSchoolName())
+                                .medium(s.getTwelfthDetail().getMedium())
+                                .group(s.getTwelfthDetail().getGroup())
+                                .totalMarks(s.getTwelfthDetail().getTotalMarks())
+                                .percentage(s.getTwelfthDetail().getPercentage())
+                                .cutoff(s.getTwelfthDetail().getCutoff())
+                                .physicsMarks(s.getTwelfthDetail().getPhysicsMarks())
+                                .chemistryMarks(s.getTwelfthDetail().getChemistryMarks())
+                                .mathsMarks(s.getTwelfthDetail().getMathsMarks())
+                                .yearOfPassing(s.getTwelfthDetail().getYearOfPassing())
                                 .build())
-                        .collect(Collectors.toList()))
-                .semesterRecords(s.getSemesterRecords() == null ? Collections.emptyList() : s.getSemesterRecords().stream()
-                        .map(sem -> SemesterRecordDto.builder()
-                                .id(sem.getId())
-                                .semesterNumber(sem.getSemesterNumber())
-                                .yearNumber(sem.getYearNumber())
-                                .mentorName(sem.getMentorName())
-                                .firstHourTestMarks(sem.getFirstHourTestMarks())
-                                .cat1(sem.getCat1())
-                                .cat2(sem.getCat2())
-                                .model(sem.getModel())
-                                .grade(sem.getGrade())
-                                .gpa(sem.getGpa())
-                                .cgpaTillNow(sem.getCgpaTillNow())
-                                .historyOfArrears(sem.getHistoryOfArrears())
-                                .standingArrears(sem.getStandingArrears())
+                .admissionDetail(s.getAdmissionDetail() == null ? null
+                        : AdmissionDetailDto.builder()
+                                .id(s.getAdmissionDetail().getId())
+                                .scholarships(s.getAdmissionDetail().getScholarships())
                                 .build())
-                        .collect(Collectors.toList()))
-                .extraActivities(s.getExtraActivities() == null ? Collections.emptyList() : s.getExtraActivities().stream()
-                        .map(act -> ExtraActivityDto.builder()
-                                .id(act.getId())
-                                .type(act.getType())
-                                .name(act.getName())
-                                .details(act.getDetails())
-                                .build())
-                        .collect(Collectors.toList()))
-                .internships(s.getInternships() == null ? Collections.emptyList() : s.getInternships().stream()
-                        .map(intern -> InternshipDto.builder()
-                                .id(intern.getId())
-                                .name(intern.getName())
-                                .date(intern.getDate())
-                                .location(intern.getLocation())
-                                .domain(intern.getDomain())
-                                .certificatePath(intern.getCertificatePath())
-                                .build())
-                        .collect(Collectors.toList()))
-                .industrialVisits(s.getIndustrialVisits() == null ? Collections.emptyList() : s.getIndustrialVisits().stream()
-                        .map(visit -> IndustrialVisitDto.builder()
-                                .id(visit.getId())
-                                .name(visit.getName())
-                                .date(visit.getDate())
-                                .location(visit.getLocation())
-                                .build())
-                        .collect(Collectors.toList()))
-                .indisciplinaryActivities(s.getIndisciplinaryActivities() == null ? Collections.emptyList() : s.getIndisciplinaryActivities().stream()
-                        .map(act -> IndisciplinaryActivityDto.builder()
-                                .id(act.getId())
-                                .description(act.getDescription())
-                                .date(act.getDate())
-                                .addedBy(act.getAddedBy())
-                                .build())
-                        .collect(Collectors.toList()))
+                .siblings(s.getSiblings() == null ? Collections.emptyList()
+                        : s.getSiblings().stream()
+                                .map(sib -> SiblingDto.builder()
+                                        .id(sib.getId())
+                                        .name(sib.getName())
+                                        .occupation(sib.getOccupation())
+                                        .qualification(sib.getQualification())
+                                        .emailId(sib.getEmailId())
+                                        .mobileNumber(sib.getMobileNumber())
+                                        .build())
+                                .collect(Collectors.toList()))
+                .certificates(s.getCertificates() == null ? Collections.emptyList()
+                        : s.getCertificates().stream()
+                                .map(cert -> CertificateDto.builder()
+                                        .id(cert.getId())
+                                        .type(cert.getType())
+                                        .filePath(cert.getFilePath())
+                                        .build())
+                                .collect(Collectors.toList()))
+                .semesterRecords(s.getSemesterRecords() == null ? Collections.emptyList()
+                        : s.getSemesterRecords().stream()
+                                .map(sem -> SemesterRecordDto.builder()
+                                        .id(sem.getId())
+                                        .semesterNumber(sem.getSemesterNumber())
+                                        .yearNumber(sem.getYearNumber())
+                                        .mentorName(sem.getMentorName())
+                                        .firstHourTestMarks(sem.getFirstHourTestMarks())
+                                        .cat1(sem.getCat1())
+                                        .cat2(sem.getCat2())
+                                        .model(sem.getModel())
+                                        .grade(sem.getGrade())
+                                        .gpa(sem.getGpa())
+                                        .cgpaTillNow(sem.getCgpaTillNow())
+                                        .historyOfArrears(sem.getHistoryOfArrears())
+                                        .standingArrears(sem.getStandingArrears())
+                                        .build())
+                                .collect(Collectors.toList()))
+                .extraActivities(s.getExtraActivities() == null ? Collections.emptyList()
+                        : s.getExtraActivities().stream()
+                                .map(act -> ExtraActivityDto.builder()
+                                        .id(act.getId())
+                                        .type(act.getType())
+                                        .name(act.getName())
+                                        .details(act.getDetails())
+                                        .build())
+                                .collect(Collectors.toList()))
+                .internships(s.getInternships() == null ? Collections.emptyList()
+                        : s.getInternships().stream()
+                                .map(intern -> InternshipDto.builder()
+                                        .id(intern.getId())
+                                        .name(intern.getName())
+                                        .date(intern.getDate())
+                                        .location(intern.getLocation())
+                                        .domain(intern.getDomain())
+                                        .certificatePath(intern.getCertificatePath())
+                                        .build())
+                                .collect(Collectors.toList()))
+                .industrialVisits(s.getIndustrialVisits() == null ? Collections.emptyList()
+                        : s.getIndustrialVisits().stream()
+                                .map(visit -> IndustrialVisitDto.builder()
+                                        .id(visit.getId())
+                                        .name(visit.getName())
+                                        .date(visit.getDate())
+                                        .location(visit.getLocation())
+                                        .build())
+                                .collect(Collectors.toList()))
+                .indisciplinaryActivities(s.getIndisciplinaryActivities() == null ? Collections.emptyList()
+                        : s.getIndisciplinaryActivities().stream()
+                                .map(act -> IndisciplinaryActivityDto.builder()
+                                        .id(act.getId())
+                                        .description(act.getDescription())
+                                        .date(act.getDate())
+                                        .addedBy(act.getAddedBy())
+                                        .build())
+                                .collect(Collectors.toList()))
                 .build();
     }
 
@@ -503,7 +594,7 @@ public class StudentService {
         Department dept = mentor.getDepartment();
         Integer year = mentor.getAssignedYear();
         String mentorSection = mentor.getAssignedSection();
-        
+
         boolean hasSectionField = false;
         String fieldName = "";
         try {
@@ -515,9 +606,10 @@ public class StudentService {
                 Student.class.getDeclaredField("assignedSection");
                 hasSectionField = true;
                 fieldName = "assignedSection";
-            } catch (NoSuchFieldException ex) {}
+            } catch (NoSuchFieldException ex) {
+            }
         }
-        
+
         List<Student> unassigned = studentRepository.findUnassignedStudents(dept, year);
         if (hasSectionField && mentorSection != null && !mentorSection.trim().isEmpty()) {
             final String finalFieldName = fieldName;

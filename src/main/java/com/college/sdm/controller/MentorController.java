@@ -10,8 +10,11 @@ import com.college.sdm.exception.ResourceNotFoundException;
 import com.college.sdm.repository.HodDepartmentAssignmentRepository;
 import com.college.sdm.repository.UserRepository;
 import com.college.sdm.service.MentorService;
+import com.college.sdm.service.SystemLogService;
+
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -37,10 +40,7 @@ public class MentorController {
     private HodDepartmentAssignmentRepository hodDepartmentAssignmentRepository;
 
     @Autowired
-    private com.college.sdm.repository.DepartmentRepository departmentRepository;
-
-    @Autowired
-    private com.college.sdm.service.SystemLogService systemLogService;
+    private SystemLogService systemLogService;
 
     @GetMapping
     public ResponseEntity<List<MentorResponseDto>> getMentors(Principal principal) {
@@ -82,7 +82,7 @@ public class MentorController {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
 
         if (!hasDepartmentAccess(user, request.getDepartmentId())) {
-            return ResponseEntity.status(403).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         MentorResponseDto created = mentorService.createMentor(request);
@@ -106,7 +106,7 @@ public class MentorController {
 
         if (!hasDepartmentAccess(user, mentor.getDepartment() != null ? mentor.getDepartment().getId() : null)
                 || !hasDepartmentAccess(user, request.getDepartmentId())) {
-            return ResponseEntity.status(403).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         MentorResponseDto updated = mentorService.updateMentor(id, request);
@@ -134,7 +134,7 @@ public class MentorController {
 
         if (!hasDepartmentAccess(user, mentor.getDepartment() != null ? mentor.getDepartment().getId() : null)
                 || !hasDepartmentAccess(user, departmentId)) {
-            return ResponseEntity.status(403).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         MentorResponseDto updated = mentorService.assignClassToMentor(id, departmentId, year, section);
@@ -153,7 +153,7 @@ public class MentorController {
         }
 
         if (!hasDepartmentAccess(user, mentor.getDepartment() != null ? mentor.getDepartment().getId() : null)) {
-            return ResponseEntity.status(403).build();
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
         mentorService.deleteMentor(mentor.getId());
@@ -161,3 +161,4 @@ public class MentorController {
         return ResponseEntity.noContent().build();
     }
 }
+

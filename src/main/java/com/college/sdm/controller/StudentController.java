@@ -75,7 +75,7 @@ public class StudentController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteStudent(@PathVariable Long id, Principal principal) {
+    public ResponseEntity<Void> deleteStudent(@PathVariable String id, Principal principal) {
         studentService.deleteStudent(id, principal.getName());
         systemLogService.log(principal.getName(), "Delete Student", "Removed student profile ID: " + id);
         return ResponseEntity.noContent().build();

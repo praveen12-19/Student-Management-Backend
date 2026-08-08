@@ -1,0 +1,18 @@
+# Secrets
+src/main/resources/application.properties
+
+# Build artifacts
+target/
+*.class
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# IDEs
+.idea/
+*.iml
+.classpath
+.project
+.settings/
