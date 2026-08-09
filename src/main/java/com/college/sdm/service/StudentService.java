@@ -31,6 +31,22 @@ public class StudentService {
     @Autowired
     private HodDepartmentAssignmentRepository hodDepartmentAssignmentRepository;
 
+    private List<Department> getManagedDepartmentsForHod(User user) {
+        List<Department> managedDepts = hodDepartmentAssignmentRepository.findByHod(user).stream()
+                .map(HodDepartmentAssignment::getDepartment)
+                .collect(Collectors.toList());
+        if (managedDepts.isEmpty()) {
+            managedDepts = departmentRepository.findAll();
+        }
+        return managedDepts;
+    }
+
+    private boolean hodManagesDepartment(User user, Long departmentId) {
+        if (departmentId == null) return false;
+        List<Department> depts = getManagedDepartmentsForHod(user);
+        return depts.stream().anyMatch(d -> d.getId().equals(departmentId));
+    }
+
     @Transactional(readOnly = true)
     public List<StudentResponseDto> getStudents(String username) {
         User user = userRepository.findByUsername(username)
@@ -43,12 +59,7 @@ public class StudentService {
         }
 
         if (user.getRole() == Role.ROLE_HOD) {
-            List<Department> managedDepts = hodDepartmentAssignmentRepository.findByHod(user).stream()
-                    .map(HodDepartmentAssignment::getDepartment)
-                    .collect(Collectors.toList());
-            if (managedDepts.isEmpty()) {
-                return Collections.emptyList();
-            }
+            List<Department> managedDepts = getManagedDepartmentsForHod(user);
             return studentRepository.findByDepartmentIn(managedDepts).stream()
                     .map(this::mapToResponseDto)
                     .collect(Collectors.toList());
@@ -59,7 +70,7 @@ public class StudentService {
                 List<Student> unassignedStudents = getUnassignedStudentsForMentor(mentor);
                 List<Student> deptStudents = mentor.getDepartment() != null
                         ? studentRepository.findByDepartment(mentor.getDepartment())
-                        : Collections.emptyList();
+                        : studentRepository.findAll();
 
                 java.util.Set<Long> uniqueIds = new java.util.HashSet<>();
                 List<StudentResponseDto> combined = new java.util.ArrayList<>();
@@ -159,9 +170,7 @@ public class StudentService {
 
         // Verify HOD has permission to create student in this department
         if (user.getRole() == Role.ROLE_HOD) {
-            boolean managesDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(),
-                    department.getId());
-            if (!managesDept) {
+            if (!hodManagesDepartment(user, department.getId())) {
                 throw new AccessDeniedException("HOD does not manage this department: " + department.getName());
             }
         }
@@ -192,6 +201,7 @@ public class StudentService {
                 .totalLeavesTaken(request.getTotalLeavesTaken() != null ? request.getTotalLeavesTaken() : 0)
                 .od(request.getOd() != null ? request.getOd() : 0)
                 .lateComing(request.getLateComing() != null ? request.getLateComing() : 0)
+                .leaveDetailsJson(request.getLeaveDetailsJson())
                 .build();
 
         student = studentRepository.save(student);
@@ -213,9 +223,7 @@ public class StudentService {
 
         // If HOD updates department, verify HOD has access to new department as well
         if (user.getRole() == Role.ROLE_HOD) {
-            boolean managesNewDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(),
-                    department.getId());
-            if (!managesNewDept) {
+            if (!hodManagesDepartment(user, department.getId())) {
                 throw new AccessDeniedException("HOD does not manage the target department: " + department.getName());
             }
         }
@@ -264,6 +272,7 @@ public class StudentService {
         student.setTotalLeavesTaken(request.getTotalLeavesTaken() != null ? request.getTotalLeavesTaken() : 0);
         student.setOd(request.getOd() != null ? request.getOd() : 0);
         student.setLateComing(request.getLateComing() != null ? request.getLateComing() : 0);
+        student.setLeaveDetailsJson(request.getLeaveDetailsJson());
 
         student = studentRepository.save(student);
         return mapToResponseDto(student);
@@ -310,12 +319,7 @@ public class StudentService {
         }
 
         if (user.getRole() == Role.ROLE_HOD) {
-            List<Department> managedDepts = hodDepartmentAssignmentRepository.findByHod(user).stream()
-                    .map(HodDepartmentAssignment::getDepartment)
-                    .collect(Collectors.toList());
-            if (managedDepts.isEmpty()) {
-                return Collections.emptyList();
-            }
+            List<Department> managedDepts = getManagedDepartmentsForHod(user);
             return studentRepository.searchStudentsForHod(managedDepts, query).stream()
                     .map(this::mapToResponseDto)
                     .collect(Collectors.toList());
@@ -388,25 +392,14 @@ public class StudentService {
         }
         if (user.getRole() == Role.ROLE_HOD) {
             if (student.getDepartment() != null) {
-                boolean managesDept = false;
-                if (user.getDepartment() != null && user.getDepartment().getId().equals(student.getDepartment().getId())) {
-                    managesDept = true;
-                }
-                if (!managesDept) {
-                    managesDept = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(),
-                            student.getDepartment().getId());
-                }
-                if (!managesDept) {
-                    int count = hodDepartmentAssignmentRepository.findByHodId(user.getId()).size();
-                    if (count > 0) {
-                        throw new AccessDeniedException("HOD does not have access to students in department: "
-                                + student.getDepartment().getName());
-                    }
+                if (!hodManagesDepartment(user, student.getDepartment().getId())) {
+                    throw new AccessDeniedException("HOD does not have access to students in department: "
+                            + student.getDepartment().getName());
                 }
             }
         } else if (user.getRole() == Role.ROLE_MENTOR) {
             Mentor mentor = mentorRepository.findByUser(user).orElse(null);
-            Department mentorDept = (mentor != null && mentor.getDepartment() != null) ? mentor.getDepartment() : user.getDepartment();
+            Department mentorDept = (mentor != null) ? mentor.getDepartment() : null;
 
             boolean sameDept = mentorDept != null && student.getDepartment() != null &&
                     (mentorDept.getId().equals(student.getDepartment().getId()) ||
@@ -415,7 +408,7 @@ public class StudentService {
             boolean isAssignedMentor = mentor != null && student.getMentor() != null
                     && student.getMentor().getId().equals(mentor.getId());
             boolean isUnassignedInScope = student.getMentor() == null
-                    && yearsMatch((mentor != null ? mentor.getAssignedYear() : user.getAssignedYear()), student.getYear());
+                    && yearsMatch((mentor != null ? mentor.getAssignedYear() : null), student.getYear());
 
             if (!sameDept && !isAssignedMentor && !isUnassignedInScope) {
                 throw new AccessDeniedException(
@@ -484,6 +477,7 @@ public class StudentService {
                 .totalLeavesTaken(s.getTotalLeavesTaken())
                 .od(s.getOd())
                 .lateComing(s.getLateComing())
+                .leaveDetailsJson(s.getLeaveDetailsJson())
                 .tenthDetail(s.getTenthDetail() == null ? null
                         : TenthDetailDto.builder()
                                 .id(s.getTenthDetail().getId())
@@ -517,6 +511,7 @@ public class StudentService {
                                 .map(sib -> SiblingDto.builder()
                                         .id(sib.getId())
                                         .name(sib.getName())
+                                        .age(sib.getAge())
                                         .occupation(sib.getOccupation())
                                         .qualification(sib.getQualification())
                                         .emailId(sib.getEmailId())
@@ -547,6 +542,7 @@ public class StudentService {
                                         .cgpaTillNow(sem.getCgpaTillNow())
                                         .historyOfArrears(sem.getHistoryOfArrears())
                                         .standingArrears(sem.getStandingArrears())
+                                        .subjectsJson(sem.getSubjectsJson())
                                         .build())
                                 .collect(Collectors.toList()))
                 .extraActivities(s.getExtraActivities() == null ? Collections.emptyList()

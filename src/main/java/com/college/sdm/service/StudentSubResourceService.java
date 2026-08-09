@@ -138,6 +138,7 @@ public class StudentSubResourceService {
         Sibling sibling = Sibling.builder()
                 .student(student)
                 .name(dto.getName())
+                .age(dto.getAge())
                 .occupation(dto.getOccupation())
                 .qualification(dto.getQualification())
                 .emailId(dto.getEmailId())
@@ -152,6 +153,7 @@ public class StudentSubResourceService {
         studentService.verifyAccess(sibling.getStudent());
 
         sibling.setName(dto.getName());
+        sibling.setAge(dto.getAge());
         sibling.setOccupation(dto.getOccupation());
         sibling.setQualification(dto.getQualification());
         sibling.setEmailId(dto.getEmailId());
@@ -455,6 +457,7 @@ public class StudentSubResourceService {
                 .id(entity.getId())
                 .studentId(entity.getStudent().getId())
                 .name(entity.getName())
+                .age(entity.getAge())
                 .occupation(entity.getOccupation())
                 .qualification(entity.getQualification())
                 .emailId(entity.getEmailId())

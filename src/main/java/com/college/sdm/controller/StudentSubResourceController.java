@@ -282,6 +282,7 @@ public class StudentSubResourceController {
         Sibling sibling = Sibling.builder()
                 .student(student)
                 .name(dto.getName())
+                .age(dto.getAge())
                 .occupation(dto.getOccupation())
                 .qualification(dto.getQualification())
                 .emailId(dto.getEmailId())
@@ -306,6 +307,7 @@ public class StudentSubResourceController {
         }
 
         sibling.setName(dto.getName());
+        sibling.setAge(dto.getAge());
         sibling.setOccupation(dto.getOccupation());
         sibling.setQualification(dto.getQualification());
         sibling.setEmailId(dto.getEmailId());
@@ -335,6 +337,7 @@ public class StudentSubResourceController {
         return SiblingDto.builder()
                 .id(s.getId())
                 .name(s.getName())
+                .age(s.getAge())
                 .occupation(s.getOccupation())
                 .qualification(s.getQualification())
                 .emailId(s.getEmailId())
@@ -448,6 +451,7 @@ public class StudentSubResourceController {
                 .cgpaTillNow(dto.getCgpaTillNow())
                 .historyOfArrears(dto.getHistoryOfArrears())
                 .standingArrears(dto.getStandingArrears())
+                .subjectsJson(dto.getSubjectsJson())
                 .build();
         record = semesterRecordRepository.save(record);
         return ResponseEntity.ok(mapSemesterToDto(record));
@@ -479,6 +483,7 @@ public class StudentSubResourceController {
         record.setCgpaTillNow(dto.getCgpaTillNow());
         record.setHistoryOfArrears(dto.getHistoryOfArrears());
         record.setStandingArrears(dto.getStandingArrears());
+        record.setSubjectsJson(dto.getSubjectsJson());
         record = semesterRecordRepository.save(record);
         return ResponseEntity.ok(mapSemesterToDto(record));
     }
@@ -515,6 +520,7 @@ public class StudentSubResourceController {
                 .cgpaTillNow(r.getCgpaTillNow())
                 .historyOfArrears(r.getHistoryOfArrears())
                 .standingArrears(r.getStandingArrears())
+                .subjectsJson(r.getSubjectsJson())
                 .build();
     }
 

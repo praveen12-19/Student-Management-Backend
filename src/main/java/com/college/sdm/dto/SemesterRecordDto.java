@@ -33,4 +33,5 @@ public class SemesterRecordDto {
     private Double cgpaTillNow;
     private Integer historyOfArrears;
     private Integer standingArrears;
+    private String subjectsJson;
 }

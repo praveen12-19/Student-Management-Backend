@@ -97,6 +97,9 @@ public class Student {
     @Builder.Default
     private Integer lateComing = 0;
 
+    @Column(name = "leave_details_json", columnDefinition = "TEXT")
+    private String leaveDetailsJson;
+
     // Bidirectional child relationships
     @OneToOne(mappedBy = "student", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private TenthDetail tenthDetail;

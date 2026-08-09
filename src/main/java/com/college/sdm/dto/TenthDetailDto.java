@@ -14,7 +14,7 @@ public class TenthDetailDto {
 
     private String medium;
 
-    private Double totalMarks;
+    private String totalMarks;
 
     private Double percentage;
 

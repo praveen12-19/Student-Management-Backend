@@ -14,6 +14,7 @@ public class SiblingDto {
     @NotBlank(message = "Sibling name is required")
     private String name;
 
+    private Integer age;
     private String occupation;
     private String qualification;
     private String emailId;

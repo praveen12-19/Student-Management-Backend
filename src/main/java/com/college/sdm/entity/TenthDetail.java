@@ -25,7 +25,7 @@ public class TenthDetail {
     private String medium;
 
     @Column(name = "total_marks")
-    private Double totalMarks;
+    private String totalMarks;
 
     private Double percentage;
 

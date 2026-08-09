@@ -16,7 +16,7 @@ public class TwelfthDetailDto {
 
     private String group;
 
-    private Double totalMarks;
+    private String totalMarks;
 
     private Double percentage;
 

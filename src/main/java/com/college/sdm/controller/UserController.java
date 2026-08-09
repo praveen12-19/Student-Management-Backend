@@ -75,6 +75,11 @@ public class UserController {
             List<DepartmentInfo> depts = hodDepartmentAssignmentRepository.findByHod(hod).stream()
                     .map(assign -> new DepartmentInfo(assign.getDepartment().getId(), assign.getDepartment().getName()))
                     .collect(Collectors.toList());
+            if (depts.isEmpty()) {
+                depts = departmentRepository.findAll().stream()
+                        .map(d -> new DepartmentInfo(d.getId(), d.getName()))
+                        .collect(Collectors.toList());
+            }
             return new HodResponse(hod.getId(), hod.getUsername(), hod.getName(), depts);
         }).collect(Collectors.toList());
 

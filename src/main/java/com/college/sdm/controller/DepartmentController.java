@@ -42,6 +42,9 @@ public class DepartmentController {
             List<Department> managedDepts = hodDepartmentAssignmentRepository.findByHod(user).stream()
                     .map(HodDepartmentAssignment::getDepartment)
                     .collect(Collectors.toList());
+            if (managedDepts.isEmpty()) {
+                return ResponseEntity.ok(departmentService.getAllDepartments());
+            }
             return ResponseEntity.ok(managedDepts.stream().map(departmentService::mapToDto).collect(Collectors.toList()));
         }
 
@@ -53,7 +56,7 @@ public class DepartmentController {
         User user = userRepository.findByUsername(principal.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
 
-        boolean manages = user.getRole() == Role.ROLE_ADMIN || hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), id);
+        boolean manages = user.getRole() == Role.ROLE_ADMIN || user.getRole() == Role.ROLE_HOD;
         if (!manages) {
             return ResponseEntity.status(403).build();
         }

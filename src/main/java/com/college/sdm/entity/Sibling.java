@@ -22,6 +22,8 @@ public class Sibling {
     @Column(nullable = false)
     private String name;
 
+    private Integer age;
+
     private String occupation;
 
     private String qualification;

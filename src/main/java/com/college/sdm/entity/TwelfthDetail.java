@@ -28,7 +28,7 @@ public class TwelfthDetail {
     private String group;
 
     @Column(name = "total_marks")
-    private Double totalMarks;
+    private String totalMarks;
 
     private Double percentage;
 

@@ -39,6 +39,7 @@ public class StudentResponseDto {
     private Integer totalLeavesTaken;
     private Integer od;
     private Integer lateComing;
+    private String leaveDetailsJson;
 
     private TenthDetailDto tenthDetail;
     private TwelfthDetailDto twelfthDetail;

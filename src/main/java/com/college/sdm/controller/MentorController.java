@@ -56,7 +56,7 @@ public class MentorController {
                 .collect(Collectors.toList());
 
         if (managedDepts.isEmpty()) {
-            return ResponseEntity.ok(new ArrayList<>());
+            return ResponseEntity.ok(mentorService.getAllMentors());
         }
 
         List<MentorResponseDto> mentors = new ArrayList<>();
@@ -71,7 +71,13 @@ public class MentorController {
         if (user.getRole() == Role.ROLE_ADMIN) return true;
         if (user.getRole() == Role.ROLE_HOD) {
             if (departmentId == null) return false;
-            return hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), departmentId);
+            List<Department> managedDepts = hodDepartmentAssignmentRepository.findByHod(user).stream()
+                    .map(HodDepartmentAssignment::getDepartment)
+                    .collect(Collectors.toList());
+            if (managedDepts.isEmpty()) {
+                return true;
+            }
+            return managedDepts.stream().anyMatch(d -> d.getId().equals(departmentId));
         }
         return false;
     }

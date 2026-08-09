@@ -54,4 +54,5 @@ public class StudentRequestDto {
     private Integer totalLeavesTaken;
     private Integer od;
     private Integer lateComing;
+    private String leaveDetailsJson;
 }

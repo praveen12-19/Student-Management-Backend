@@ -49,4 +49,7 @@ public class SemesterRecord {
 
     @Column(name = "standing_arrears")
     private Integer standingArrears;
+
+    @Column(name = "subjects_json", columnDefinition = "TEXT")
+    private String subjectsJson;
 }
