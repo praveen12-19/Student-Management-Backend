@@ -18,4 +18,5 @@ public class ExtraActivityDto {
     private String name;
 
     private String details;
+    private String certificatePath;
 }

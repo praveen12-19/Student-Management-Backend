@@ -198,6 +198,7 @@ public class StudentService {
                 .mentor(mentor)
                 .fatherDetail(request.getFatherDetail())
                 .motherDetail(request.getMotherDetail())
+                .image(request.getImage() != null && !request.getImage().trim().isEmpty() && !request.getImage().startsWith("data:") ? request.getImage() : null)
                 .totalLeavesTaken(request.getTotalLeavesTaken() != null ? request.getTotalLeavesTaken() : 0)
                 .od(request.getOd() != null ? request.getOd() : 0)
                 .lateComing(request.getLateComing() != null ? request.getLateComing() : 0)
@@ -269,6 +270,13 @@ public class StudentService {
         student.setMentor(mentor);
         student.setFatherDetail(request.getFatherDetail());
         student.setMotherDetail(request.getMotherDetail());
+        if (request.getImage() != null && !request.getImage().trim().isEmpty() && !"null".equalsIgnoreCase(request.getImage().trim())) {
+            if (!request.getImage().startsWith("data:")) {
+                student.setImage(request.getImage());
+            }
+        } else {
+            student.setImage(null);
+        }
         student.setTotalLeavesTaken(request.getTotalLeavesTaken() != null ? request.getTotalLeavesTaken() : 0);
         student.setOd(request.getOd() != null ? request.getOd() : 0);
         student.setLateComing(request.getLateComing() != null ? request.getLateComing() : 0);
@@ -425,7 +433,7 @@ public class StudentService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + currentUsername));
         verifyAccess(student, user);
 
-        student.setImage(imagePath);
+        student.setImage(imagePath != null && !imagePath.trim().isEmpty() && !"null".equalsIgnoreCase(imagePath.trim()) ? imagePath : null);
         studentRepository.save(student);
     }
 
@@ -552,6 +560,7 @@ public class StudentService {
                                         .type(act.getType())
                                         .name(act.getName())
                                         .details(act.getDetails())
+                                        .certificatePath(act.getCertificatePath())
                                         .build())
                                 .collect(Collectors.toList()))
                 .internships(s.getInternships() == null ? Collections.emptyList()
@@ -580,7 +589,7 @@ public class StudentService {
                                         .id(act.getId())
                                         .description(act.getDescription())
                                         .date(act.getDate())
-                                        .addedBy(act.getAddedBy())
+                                        .addedBy(act.getAddedBy() != null ? act.getAddedBy().replaceAll("\\s*\\([^)]*\\)", "").trim() : "")
                                         .build())
                                 .collect(Collectors.toList()))
                 .build();

@@ -239,6 +239,7 @@ public class StudentSubResourceService {
         record.setCgpaTillNow(dto.getCgpaTillNow());
         record.setHistoryOfArrears(dto.getHistoryOfArrears());
         record.setStandingArrears(dto.getStandingArrears());
+        record.setSubjectsJson(dto.getSubjectsJson());
 
         return mapToDto(semesterRecordRepository.save(record));
     }
@@ -265,6 +266,7 @@ public class StudentSubResourceService {
                 .type(dto.getType())
                 .name(dto.getName())
                 .details(dto.getDetails())
+                .certificatePath(dto.getCertificatePath())
                 .build();
         return mapToDto(extraActivityRepository.save(act));
     }
@@ -277,6 +279,7 @@ public class StudentSubResourceService {
         act.setType(dto.getType());
         act.setName(dto.getName());
         act.setDetails(dto.getDetails());
+        act.setCertificatePath(dto.getCertificatePath());
 
         return mapToDto(extraActivityRepository.save(act));
     }
@@ -381,11 +384,8 @@ public class StudentSubResourceService {
     public IndisciplinaryActivityDto addIndisciplinaryActivity(Long studentId, IndisciplinaryActivityDto dto) {
         Student student = getAndVerifyStudent(studentId);
         
-        String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        // Since we know the authenticated user is accessing this, we can populate addedBy
-        String authorities = SecurityContextHolder.getContext().getAuthentication().getAuthorities().toString();
-        String role = authorities.contains("ROLE_HOD") ? "HOD" : "Mentor";
-        String addedByString = username + " (" + role + ")";
+        String rawAdded = (dto.getAddedBy() != null && !dto.getAddedBy().trim().isEmpty()) ? dto.getAddedBy() : username;
+        String addedByString = rawAdded.replaceAll("\\s*\\([^)]*\\)", "").trim();
 
         IndisciplinaryActivity act = IndisciplinaryActivity.builder()
                 .student(student)
@@ -403,6 +403,9 @@ public class StudentSubResourceService {
 
         act.setDescription(dto.getDescription());
         act.setDate(dto.getDate());
+        if (dto.getAddedBy() != null && !dto.getAddedBy().trim().isEmpty()) {
+            act.setAddedBy(dto.getAddedBy().replaceAll("\\s*\\([^)]*\\)", "").trim());
+        }
 
         return mapToDto(indisciplinaryActivityRepository.save(act));
     }
@@ -500,6 +503,7 @@ public class StudentSubResourceService {
                 .type(entity.getType())
                 .name(entity.getName())
                 .details(entity.getDetails())
+                .certificatePath(entity.getCertificatePath())
                 .build();
     }
 
@@ -526,12 +530,13 @@ public class StudentSubResourceService {
     }
 
     private IndisciplinaryActivityDto mapToDto(IndisciplinaryActivity entity) {
+        String cleaned = entity.getAddedBy() != null ? entity.getAddedBy().replaceAll("\\s*\\([^)]*\\)", "").trim() : "";
         return IndisciplinaryActivityDto.builder()
                 .id(entity.getId())
                 .studentId(entity.getStudent().getId())
                 .description(entity.getDescription())
                 .date(entity.getDate())
-                .addedBy(entity.getAddedBy())
+                .addedBy(cleaned)
                 .build();
     }
 }

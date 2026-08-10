@@ -27,4 +27,7 @@ public class ExtraActivity {
 
     @Column(length = 1000)
     private String details;
+
+    @Column(name = "certificate_path", length = 500)
+    private String certificatePath;
 }

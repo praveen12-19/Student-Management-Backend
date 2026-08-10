@@ -548,6 +548,7 @@ public class StudentSubResourceController {
                 .type(dto.getType())
                 .name(dto.getName())
                 .details(dto.getDetails())
+                .certificatePath(dto.getCertificatePath())
                 .build();
         activity = extraActivityRepository.save(activity);
         return ResponseEntity.ok(mapExtraToDto(activity));
@@ -570,6 +571,7 @@ public class StudentSubResourceController {
         activity.setType(dto.getType());
         activity.setName(dto.getName());
         activity.setDetails(dto.getDetails());
+        activity.setCertificatePath(dto.getCertificatePath());
         activity = extraActivityRepository.save(activity);
         return ResponseEntity.ok(mapExtraToDto(activity));
     }
@@ -597,6 +599,7 @@ public class StudentSubResourceController {
                 .type(e.getType())
                 .name(e.getName())
                 .details(e.getDetails())
+                .certificatePath(e.getCertificatePath())
                 .build();
     }
 
@@ -780,7 +783,8 @@ public class StudentSubResourceController {
         User user = userRepository.findByUsername(principal.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
 
-        String addedByString = user.getUsername() + " (" + user.getRole().name().replace("ROLE_", "") + ")";
+        String rawAdded = (dto.getAddedBy() != null && !dto.getAddedBy().trim().isEmpty()) ? dto.getAddedBy() : user.getUsername();
+        String addedByString = rawAdded.replaceAll("\\s*\\([^)]*\\)", "").trim();
 
         IndisciplinaryActivity activity = IndisciplinaryActivity.builder()
                 .student(student)
@@ -808,7 +812,9 @@ public class StudentSubResourceController {
 
         activity.setDescription(dto.getDescription());
         activity.setDate(dto.getDate());
-        // do not update addedBy to retain original creator info
+        if (dto.getAddedBy() != null && !dto.getAddedBy().trim().isEmpty()) {
+            activity.setAddedBy(dto.getAddedBy().replaceAll("\\s*\\([^)]*\\)", "").trim());
+        }
         activity = indisciplinaryActivityRepository.save(activity);
         return ResponseEntity.ok(mapIndisciplinaryToDto(activity));
     }
@@ -831,11 +837,12 @@ public class StudentSubResourceController {
     }
 
     private IndisciplinaryActivityDto mapIndisciplinaryToDto(IndisciplinaryActivity a) {
+        String cleaned = a.getAddedBy() != null ? a.getAddedBy().replaceAll("\\s*\\([^)]*\\)", "").trim() : "";
         return IndisciplinaryActivityDto.builder()
                 .id(a.getId())
                 .description(a.getDescription())
                 .date(a.getDate())
-                .addedBy(a.getAddedBy())
+                .addedBy(cleaned)
                 .build();
     }
 }

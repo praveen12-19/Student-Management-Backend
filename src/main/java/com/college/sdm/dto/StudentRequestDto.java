@@ -51,6 +51,8 @@ public class StudentRequestDto {
     private FatherDetail fatherDetail;
     private MotherDetail motherDetail;
 
+    private String image;
+
     private Integer totalLeavesTaken;
     private Integer od;
     private Integer lateComing;

@@ -99,6 +99,15 @@ public class StudentController {
         return ResponseEntity.ok(updated);
     }
 
+    @DeleteMapping("/{id}/image")
+    public ResponseEntity<StudentResponseDto> deleteImage(
+            @PathVariable Long id,
+            Principal principal) {
+        studentService.updateStudentImage(id, null, principal.getName());
+        StudentResponseDto updated = studentService.getStudentById(id, principal.getName());
+        return ResponseEntity.ok(updated);
+    }
+
     @PostMapping("/{id}/upload-certificate")
     public ResponseEntity<CertificateDto> uploadCertificate(
             @PathVariable Long id,
