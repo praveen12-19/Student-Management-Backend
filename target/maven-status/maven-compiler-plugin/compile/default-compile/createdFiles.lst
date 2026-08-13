@@ -42,7 +42,6 @@ com\college\sdm\entity\MotherDetail$MotherDetailBuilder.class
 com\college\sdm\dto\SemesterRecordDto.class
 com\college\sdm\service\DepartmentService.class
 com\college\sdm\exception\ResourceNotFoundException.class
-com\college\sdm\service\MentorService.class
 com\college\sdm\repository\HodDepartmentAssignmentRepository.class
 com\college\sdm\repository\TwelfthDetailRepository.class
 com\college\sdm\entity\Student.class
@@ -70,7 +69,6 @@ com\college\sdm\dto\StudentResponseDto.class
 com\college\sdm\entity\Department$DepartmentBuilder.class
 com\college\sdm\config\DatabaseSeeder.class
 com\college\sdm\entity\TenthDetail.class
-com\college\sdm\controller\MentorController.class
 com\college\sdm\entity\HodDepartmentAssignment$HodDepartmentAssignmentBuilder.class
 com\college\sdm\service\StudentService.class
 com\college\sdm\dto\InternshipDto$InternshipDtoBuilder.class

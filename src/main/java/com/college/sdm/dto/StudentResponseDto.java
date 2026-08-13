@@ -16,6 +16,7 @@ public class StudentResponseDto {
     private String name;
     private String registerNumber;
     private Integer year;
+    private String section;
     private DepartmentDto department;
     private String academicYear;
     private LocalDate dob;

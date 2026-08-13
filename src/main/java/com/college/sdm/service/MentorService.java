@@ -4,12 +4,14 @@ import com.college.sdm.dto.DepartmentDto;
 import com.college.sdm.dto.MentorRequestDto;
 import com.college.sdm.dto.MentorResponseDto;
 import com.college.sdm.entity.Department;
+import com.college.sdm.entity.DepartmentYearSection;
 import com.college.sdm.entity.Mentor;
 import com.college.sdm.entity.Role;
 import com.college.sdm.entity.Student;
 import com.college.sdm.entity.User;
 import com.college.sdm.exception.ResourceNotFoundException;
 import com.college.sdm.repository.DepartmentRepository;
+import com.college.sdm.repository.DepartmentYearSectionRepository;
 import com.college.sdm.repository.MentorRepository;
 import com.college.sdm.repository.StudentRepository;
 import com.college.sdm.repository.UserRepository;
@@ -35,7 +37,13 @@ public class MentorService {
     private DepartmentRepository departmentRepository;
 
     @Autowired
+    private DepartmentYearSectionRepository departmentYearSectionRepository;
+
+    @Autowired
     private StudentRepository studentRepository;
+
+    @Autowired
+    private StudentService studentService;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -68,7 +76,7 @@ public class MentorService {
         }
 
         Department department = getOrDefaultDepartment(request.getDepartmentId());
-        validateDepartmentSection(department, request.getAssignedSection());
+        validateDepartmentSection(department, request.getAssignedYear(), request.getAssignedSection());
 
         User user = User.builder()
                 .username(request.getUsername())
@@ -126,8 +134,12 @@ public class MentorService {
             throw new ResourceNotFoundException("Mentor not found: " + idOrUsername);
         }
 
+        Department oldDept = mentor.getDepartment();
+        Integer oldYear = mentor.getAssignedYear();
+        String oldSection = mentor.getAssignedSection();
+
         Department department = getOrDefaultDepartment(request.getDepartmentId());
-        validateDepartmentSection(department, request.getAssignedSection());
+        validateDepartmentSection(department, request.getAssignedYear(), request.getAssignedSection());
 
         User user = mentor.getUser();
         user.setUsername(request.getUsername());
@@ -142,12 +154,54 @@ public class MentorService {
         mentor.setAssignedSection(request.getAssignedSection());
         mentor = mentorRepository.save(mentor);
 
+        reconcileStudentsForMentorScopeChange(mentor, oldDept, oldYear, oldSection);
+
         return mapToResponseDto(mentor);
     }
 
     @Transactional
     public MentorResponseDto updateMentor(Long id, MentorRequestDto request) {
         return updateMentor(String.valueOf(id), request);
+    }
+
+    private void reconcileStudentsForMentorScopeChange(
+            Mentor mentor, Department oldDept, Integer oldYear, String oldSection) {
+
+        // 1. Detach students currently attached to this mentor who no longer match mentor's NEW scope
+        List<Student> currentlyAssigned = studentRepository.findByMentor(mentor);
+        for (Student s : currentlyAssigned) {
+            boolean deptMatches = s.getDepartment() != null && mentor.getDepartment() != null
+                    && s.getDepartment().getId().equals(mentor.getDepartment().getId());
+            boolean yearsMatches = studentService.yearsMatch(s.getYear(), mentor.getAssignedYear());
+            boolean sectionsMatches = (mentor.getAssignedSection() == null || mentor.getAssignedSection().trim().isEmpty())
+                    || studentService.sectionsMatch(mentor.getAssignedSection(), s.getSection());
+
+            boolean stillMatches = deptMatches && yearsMatches && sectionsMatches;
+            if (!stillMatches) {
+                s.setMentor(null);
+                studentRepository.save(s);
+            }
+        }
+
+        // 2. Pick up unassigned students matching mentor's NEW scope
+        List<Student> candidates;
+        if (mentor.getDepartment() != null && mentor.getAssignedYear() != null) {
+            candidates = studentRepository.findByDepartmentAndYear(mentor.getDepartment(), mentor.getAssignedYear());
+        } else if (mentor.getDepartment() != null) {
+            candidates = studentRepository.findByDepartment(mentor.getDepartment());
+        } else {
+            candidates = java.util.Collections.emptyList();
+        }
+
+        for (Student s : candidates) {
+            boolean yearsMatches = mentor.getAssignedYear() == null || studentService.yearsMatch(s.getYear(), mentor.getAssignedYear());
+            boolean sectionsMatches = (mentor.getAssignedSection() == null || mentor.getAssignedSection().trim().isEmpty())
+                    || studentService.sectionsMatch(mentor.getAssignedSection(), s.getSection());
+            if (yearsMatches && sectionsMatches && s.getMentor() == null) {
+                s.setMentor(mentor);
+                studentRepository.save(s);
+            }
+        }
     }
 
     private Department getOrDefaultDepartment(Long departmentId) {
@@ -164,14 +218,16 @@ public class MentorService {
         throw new ResourceNotFoundException("Department not found with id: " + departmentId);
     }
 
-    private void validateDepartmentSection(Department department, String section) {
-        if (department != null && department.getSections() != null && !department.getSections().isEmpty() && section != null && !section.trim().isEmpty()) {
-            boolean valid = department.getSections().stream()
-                    .anyMatch(s -> s.equalsIgnoreCase(section.trim()))
-                    || section.equalsIgnoreCase("A")
-                    || section.equalsIgnoreCase("B");
-            if (!valid) {
-                throw new IllegalArgumentException("Section '" + section + "' does not belong to department '" + department.getName() + "'");
+    private void validateDepartmentSection(Department department, Integer year, String section) {
+        if (department != null && year != null && section != null && !section.trim().isEmpty()) {
+            String cleanSec = section.trim().toUpperCase();
+            if (!departmentYearSectionRepository.existsByDepartmentIdAndYearAndSectionName(department.getId(), year, cleanSec)) {
+                DepartmentYearSection dys = DepartmentYearSection.builder()
+                        .department(department)
+                        .year(year)
+                        .sectionName(cleanSec)
+                        .build();
+                departmentYearSectionRepository.save(dys);
             }
         }
     }
@@ -183,15 +239,21 @@ public class MentorService {
             throw new ResourceNotFoundException("Mentor not found: " + idOrUsername);
         }
 
+        Department oldDept = mentor.getDepartment();
+        Integer oldYear = mentor.getAssignedYear();
+        String oldSection = mentor.getAssignedSection();
+
         Department department = departmentRepository.findById(departmentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Department not found: " + departmentId));
 
-        validateDepartmentSection(department, section);
+        validateDepartmentSection(department, year, section);
 
         mentor.setDepartment(department);
         mentor.setAssignedYear(year);
         mentor.setAssignedSection(section);
         mentor = mentorRepository.save(mentor);
+
+        reconcileStudentsForMentorScopeChange(mentor, oldDept, oldYear, oldSection);
 
         return mapToResponseDto(mentor);
     }
@@ -233,11 +295,9 @@ public class MentorService {
                 .department(DepartmentDto.builder()
                         .id(mentor.getDepartment().getId())
                         .name(mentor.getDepartment().getName())
-                        .sections(mentor.getDepartment().getSections() != null ? mentor.getDepartment().getSections() : Collections.emptyList())
                         .build())
                 .assignedYear(mentor.getAssignedYear())
                 .assignedSection(mentor.getAssignedSection())
                 .build();
     }
 }
-

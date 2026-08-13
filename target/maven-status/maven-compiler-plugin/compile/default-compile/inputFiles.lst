@@ -29,6 +29,7 @@ C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\m
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\repository\CertificateRepository.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\security\UserDetailsServiceImpl.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\repository\IndisciplinaryActivityRepository.java
+C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\repository\DepartmentYearSectionRepository.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\security\SecurityConfig.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\dto\AuthResponse.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\service\DepartmentService.java
@@ -47,6 +48,7 @@ C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\m
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\exception\GlobalExceptionHandler.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\config\DatabaseSeeder.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\dto\SiblingDto.java
+C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\entity\DepartmentYearSection.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\service\SystemLogService.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\dto\AdmissionDetailDto.java
 C:\Users\ppk76\OneDrive\Desktop\Student Database Management System\Backend\src\main\java\com\college\sdm\controller\LogController.java

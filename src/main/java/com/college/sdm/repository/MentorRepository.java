@@ -10,4 +10,6 @@ public interface MentorRepository extends JpaRepository<Mentor, Long> {
     Optional<Mentor> findByUser(User user);
     Optional<Mentor> findByUserId(Long userId);
     List<Mentor> findByDepartmentId(Long departmentId);
+    List<Mentor> findByDepartment(com.college.sdm.entity.Department department);
+    long countByDepartmentIdAndAssignedYearAndAssignedSection(Long departmentId, Integer assignedYear, String assignedSection);
 }

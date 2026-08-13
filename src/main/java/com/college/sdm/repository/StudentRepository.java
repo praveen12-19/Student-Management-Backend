@@ -16,7 +16,11 @@ public interface StudentRepository extends JpaRepository<Student, Long> {
 
     List<Student> findByDepartment(Department department);
 
+    List<Student> findByDepartmentAndYear(Department department, Integer year);
+
     List<Student> findByMentor(Mentor mentor);
+
+    long countByDepartmentIdAndYearAndSection(Long departmentId, Integer year, String section);
 
     @Query("SELECT s FROM Student s WHERE s.department = :department AND s.year = :year AND s.mentor IS NULL")
     List<Student> findUnassignedStudents(@Param("department") Department department, @Param("year") Integer year);

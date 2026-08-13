@@ -23,6 +23,8 @@ public class StudentRequestDto {
     @NotNull(message = "Year is required")
     private Integer year;
 
+    private String section;
+
     @NotNull(message = "Department ID is required")
     private Long departmentId;
 

@@ -383,6 +383,9 @@ public class StudentSubResourceService {
 
     public IndisciplinaryActivityDto addIndisciplinaryActivity(Long studentId, IndisciplinaryActivityDto dto) {
         Student student = getAndVerifyStudent(studentId);
+        String username = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() != null 
+                ? org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName() 
+                : "System";
         
         String rawAdded = (dto.getAddedBy() != null && !dto.getAddedBy().trim().isEmpty()) ? dto.getAddedBy() : username;
         String addedByString = rawAdded.replaceAll("\\s*\\([^)]*\\)", "").trim();

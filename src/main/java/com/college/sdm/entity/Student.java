@@ -28,6 +28,8 @@ public class Student {
     @Column(nullable = false)
     private Integer year;
 
+    private String section;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "department_id", nullable = false)
     private Department department;

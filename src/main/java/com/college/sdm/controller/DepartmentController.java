@@ -102,4 +102,67 @@ public class DepartmentController {
         systemLogService.log(principal.getName(), "Delete Department", "Removed department ID: " + id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/{deptId}/years/{year}/sections")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD', 'MENTOR')")
+    public ResponseEntity<List<String>> getSectionsForYear(
+            @PathVariable Long deptId,
+            @PathVariable Integer year) {
+        return ResponseEntity.ok(departmentService.getSectionsForDeptAndYear(deptId, year));
+    }
+
+    @PostMapping("/{deptId}/years/{year}/sections")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD')")
+    public ResponseEntity<?> addSectionForYear(
+            @PathVariable Long deptId,
+            @PathVariable Integer year,
+            @RequestBody java.util.Map<String, String> body,
+            Principal principal) {
+        User user = userRepository.findByUsername(principal.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
+
+        if (user.getRole() == Role.ROLE_HOD) {
+            boolean manages = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), deptId)
+                    || hodDepartmentAssignmentRepository.findByHod(user).isEmpty();
+            if (!manages) {
+                return ResponseEntity.status(403).body("Not authorized to manage sections for this department");
+            }
+        }
+
+        String sectionName = body.get("sectionName");
+        if (sectionName == null || sectionName.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("sectionName is required");
+        }
+
+        departmentService.addSectionToDeptAndYear(deptId, year, sectionName);
+        systemLogService.log(principal.getName(), "Add Section", "Added section " + sectionName + " to department ID: " + deptId + " year: " + year);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{deptId}/years/{year}/sections/{sectionName}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD')")
+    public ResponseEntity<?> removeSectionForYear(
+            @PathVariable Long deptId,
+            @PathVariable Integer year,
+            @PathVariable String sectionName,
+            Principal principal) {
+        User user = userRepository.findByUsername(principal.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + principal.getName()));
+
+        if (user.getRole() == Role.ROLE_HOD) {
+            boolean manages = hodDepartmentAssignmentRepository.existsByHodIdAndDepartmentId(user.getId(), deptId)
+                    || hodDepartmentAssignmentRepository.findByHod(user).isEmpty();
+            if (!manages) {
+                return ResponseEntity.status(403).body("Not authorized to manage sections for this department");
+            }
+        }
+
+        try {
+            departmentService.removeSectionFromDeptAndYear(deptId, year, sectionName);
+            systemLogService.log(principal.getName(), "Remove Section", "Removed section " + sectionName + " from department ID: " + deptId + " year: " + year);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
 }

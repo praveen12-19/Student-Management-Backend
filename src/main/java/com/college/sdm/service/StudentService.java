@@ -81,12 +81,12 @@ public class StudentService {
                     }
                 }
                 for (Student s : unassignedStudents) {
-                    if (uniqueIds.add(s.getId())) {
+                    if (isStudentInMentorScope(s, mentor) && uniqueIds.add(s.getId())) {
                         combined.add(mapToResponseDto(s));
                     }
                 }
                 for (Student s : deptStudents) {
-                    if (uniqueIds.add(s.getId())) {
+                    if (isStudentInMentorScope(s, mentor) && uniqueIds.add(s.getId())) {
                         combined.add(mapToResponseDto(s));
                     }
                 }
@@ -162,10 +162,19 @@ public class StudentService {
                 throw new AccessDeniedException(
                         "Mentor can only create students in their assigned year: " + mentor.getAssignedYear());
             }
-        } else if (request.getMentorId() != null) {
-            mentor = mentorRepository.findById(request.getMentorId())
-                    .orElseThrow(
-                            () -> new ResourceNotFoundException("Mentor not found with id: " + request.getMentorId()));
+            if (mentor.getAssignedSection() != null && !mentor.getAssignedSection().trim().isEmpty()) {
+                if (!sectionsMatch(mentor.getAssignedSection(), request.getSection())) {
+                    throw new AccessDeniedException(
+                            "Mentor can only create students in their assigned section: " + mentor.getAssignedSection());
+                }
+            }
+        } else {
+            Mentor autoMentor = findMatchingMentorForStudent(department, request.getYear(), request.getSection());
+            if (autoMentor != null) {
+                mentor = autoMentor;
+            } else if (request.getMentorId() != null) {
+                mentor = mentorRepository.findById(request.getMentorId()).orElse(null);
+            }
         }
 
         // Verify HOD has permission to create student in this department
@@ -179,6 +188,7 @@ public class StudentService {
                 .name(request.getName())
                 .registerNumber(request.getRegisterNumber())
                 .year(request.getYear())
+                .section(request.getSection())
                 .department(department)
                 .academicYear(request.getAcademicYear())
                 .dob(request.getDob())
@@ -238,19 +248,31 @@ public class StudentService {
             if (!request.getYear().equals(student.getYear())) {
                 throw new AccessDeniedException("Mentor cannot change the year of a student");
             }
+            if (request.getSection() != null && !sectionsMatch(request.getSection(), student.getSection())) {
+                throw new AccessDeniedException("Mentor cannot change the section of a student");
+            }
         } else {
+            Mentor selectedMentor = null;
             if (request.getMentorId() != null) {
-                mentor = mentorRepository.findById(request.getMentorId())
-                        .orElseThrow(() -> new ResourceNotFoundException(
-                                "Mentor not found with id: " + request.getMentorId()));
+                selectedMentor = mentorRepository.findById(request.getMentorId()).orElse(null);
+            }
+
+            boolean scopeChanged = !department.getId().equals(student.getDepartment().getId())
+                    || !request.getYear().equals(student.getYear())
+                    || !sectionsMatch(request.getSection(), student.getSection());
+
+            if (scopeChanged) {
+                Mentor autoMentor = findMatchingMentorForStudent(department, request.getYear(), request.getSection());
+                mentor = (autoMentor != null) ? autoMentor : selectedMentor;
             } else {
-                mentor = null; // allow HOD/Admin to set to null
+                mentor = (selectedMentor != null) ? selectedMentor : student.getMentor();
             }
         }
 
         student.setName(request.getName());
         student.setRegisterNumber(request.getRegisterNumber());
         student.setYear(request.getYear());
+        student.setSection(request.getSection());
         student.setDepartment(department);
         student.setAcademicYear(request.getAcademicYear());
         student.setDob(request.getDob());
@@ -369,7 +391,7 @@ public class StudentService {
         verifyAccess(student, user);
     }
 
-    private boolean yearsMatch(Object y1, Object y2) {
+    public boolean yearsMatch(Object y1, Object y2) {
         if (y1 == null || y2 == null)
             return true;
         String s1 = String.valueOf(y1).trim().toUpperCase();
@@ -394,6 +416,55 @@ public class StudentService {
         return s;
     }
 
+    public boolean sectionsMatch(String mentorSec, String studentSec) {
+        if (mentorSec == null || mentorSec.trim().isEmpty()) return true;
+        if (studentSec == null || studentSec.trim().isEmpty()) return true;
+        String m = mentorSec.trim().replaceAll("(?i)\\bsection\\b", "").trim().toLowerCase();
+        String st = studentSec.trim().replaceAll("(?i)\\bsection\\b", "").trim().toLowerCase();
+        return m.equalsIgnoreCase(st);
+    }
+
+    public boolean isStudentInMentorScope(Student s, Mentor mentor) {
+        if (mentor == null || s == null) return false;
+        if (mentor.getDepartment() != null && s.getDepartment() != null) {
+            if (!mentor.getDepartment().getId().equals(s.getDepartment().getId())) {
+                return false;
+            }
+        }
+        if (mentor.getAssignedYear() != null && s.getYear() != null) {
+            if (!yearsMatch(mentor.getAssignedYear(), s.getYear())) {
+                return false;
+            }
+        }
+        if (mentor.getAssignedSection() != null && !mentor.getAssignedSection().trim().isEmpty()) {
+            if (!sectionsMatch(mentor.getAssignedSection(), s.getSection())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public Mentor findMatchingMentorForStudent(Department dept, Integer year, String section) {
+        if (dept == null) return null;
+        List<Mentor> mentors = mentorRepository.findByDepartment(dept);
+        if (mentors == null || mentors.isEmpty()) return null;
+
+        for (Mentor m : mentors) {
+            if (m.getAssignedYear() != null && yearsMatch(m.getAssignedYear(), year)) {
+                if (m.getAssignedSection() != null && sectionsMatch(m.getAssignedSection(), section)) {
+                    return m;
+                }
+            }
+        }
+        for (Mentor m : mentors) {
+            if (m.getAssignedYear() != null && yearsMatch(m.getAssignedYear(), year)
+                    && (m.getAssignedSection() == null || m.getAssignedSection().trim().isEmpty())) {
+                return m;
+            }
+        }
+        return null;
+    }
+
     public void verifyAccess(Student student, User user) {
         if (user == null || user.getRole() == Role.ROLE_ADMIN) {
             return;
@@ -407,20 +478,9 @@ public class StudentService {
             }
         } else if (user.getRole() == Role.ROLE_MENTOR) {
             Mentor mentor = mentorRepository.findByUser(user).orElse(null);
-            Department mentorDept = (mentor != null) ? mentor.getDepartment() : null;
-
-            boolean sameDept = mentorDept != null && student.getDepartment() != null &&
-                    (mentorDept.getId().equals(student.getDepartment().getId()) ||
-                            (mentorDept.getName() != null && student.getDepartment().getName() != null &&
-                                    mentorDept.getName().equalsIgnoreCase(student.getDepartment().getName())));
-            boolean isAssignedMentor = mentor != null && student.getMentor() != null
-                    && student.getMentor().getId().equals(mentor.getId());
-            boolean isUnassignedInScope = student.getMentor() == null
-                    && yearsMatch((mentor != null ? mentor.getAssignedYear() : null), student.getYear());
-
-            if (!sameDept && !isAssignedMentor && !isUnassignedInScope) {
+            if (mentor == null || !isStudentInMentorScope(student, mentor)) {
                 throw new AccessDeniedException(
-                        "Mentor does not have access to students outside their department or scope");
+                        "Mentor can only view, edit, or delete students within their assigned department, year, and section scope");
             }
         }
     }
@@ -463,6 +523,7 @@ public class StudentService {
                 .name(s.getName())
                 .registerNumber(s.getRegisterNumber())
                 .year(s.getYear())
+                .section(s.getSection())
                 .department(deptDto)
                 .academicYear(s.getAcademicYear())
                 .dob(s.getDob())
